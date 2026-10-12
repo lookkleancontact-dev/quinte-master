@@ -1,0 +1,433 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>QUINTÉ MASTER v5.1 — sécurisée</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#0a1a0f;font-family:Georgia,serif;color:#e8f5e9;min-height:100vh}
+.header{background:linear-gradient(135deg,#071510 0%,#0f2318 50%,#071510 100%);border-bottom:2px solid #c9a84c;padding:18px 24px 0;text-align:center}
+.header-sub{font-size:11px;color:#c9a84c;letter-spacing:0.2em;text-transform:uppercase;margin-bottom:4px}
+.header h1{font-size:24px;font-weight:700;color:#e8c96a;margin-bottom:4px}
+.header h1 span{font-size:13px;color:#52b788}
+.header-date{color:#c9a84c;font-size:12px;margin-bottom:12px}
+.tabs{display:flex;justify-content:center}
+.tab{padding:8px 24px;font-family:Georgia,serif;font-size:13px;font-weight:700;cursor:pointer;border:none;border-radius:8px 8px 0 0;background:transparent;color:#8fbc8f;text-transform:uppercase;letter-spacing:0.1em}
+.tab.active{background:#0a1a0f;color:#e8c96a}
+.container{max-width:680px;margin:0 auto;padding:20px 16px 40px}
+.card{background:#0f2318;border:1px solid #1e3d28;border-radius:10px;padding:18px 20px;margin-bottom:14px}
+.card-title{color:#c9a84c;font-weight:700;font-size:13px;letter-spacing:0.1em;text-transform:uppercase;margin-bottom:12px}
+.memory-badge{background:#071510;border:1px solid #1e3d28;border-radius:10px;padding:12px 16px;margin-bottom:14px;font-size:13px;color:#8fbc8f}
+textarea,input,select{width:100%;background:#071510;border:1px solid #1e3d28;border-radius:6px;color:#e8f5e9;padding:10px 12px;font-size:14px;font-family:Georgia,serif}
+textarea{min-height:70px;resize:vertical}
+.btn-main{width:100%;background:linear-gradient(135deg,#2d6a4f 0%,#1a4a35 100%);border:2px solid #c9a84c;border-radius:10px;color:#e8c96a;font-size:16px;font-weight:700;padding:16px;cursor:pointer;letter-spacing:0.08em;text-transform:uppercase;font-family:Georgia,serif;margin-top:8px}
+.btn-secondary{width:100%;background:#071510;border:1px solid #c9a84c;border-radius:8px;color:#e8c96a;font-size:14px;font-weight:700;padding:12px;cursor:pointer;font-family:Georgia,serif;margin-bottom:12px}
+.btn-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.btn-back{background:transparent;border:1px solid #1e3d28;border-radius:8px;color:#8fbc8f;font-size:14px;padding:12px;cursor:pointer;font-family:Georgia,serif;width:100%}
+.btn-copy{background:#2d6a4f;border:1px solid #c9a84c;border-radius:8px;color:#e8c96a;font-size:14px;font-weight:700;padding:12px;cursor:pointer;font-family:Georgia,serif;width:100%}
+.loading{text-align:center;padding:50px 24px}
+.loading-icon{font-size:36px;margin-bottom:16px}
+.loading-title{color:#e8c96a;font-size:16px;font-weight:700;margin-bottom:10px}
+.loading-steps{background:#071510;border-radius:8px;padding:12px;margin-bottom:20px}
+.step{display:flex;align-items:center;gap:10px;margin-bottom:8px;font-size:13px}
+.step:last-child{margin-bottom:0}
+.dot{width:12px;height:12px;border-radius:50%;flex-shrink:0}
+.dots{display:flex;justify-content:center;gap:8px}
+.dot-anim{width:10px;height:10px;border-radius:50%;background:#c9a84c;animation:pulse 1.2s ease-in-out infinite}
+.dot-anim:nth-child(2){animation-delay:0.3s}
+.dot-anim:nth-child(3){animation-delay:0.6s}
+@keyframes pulse{0%,100%{transform:scale(1);opacity:0.4}50%{transform:scale(1.4);opacity:1}}
+.result-header{background:linear-gradient(135deg,rgba(45,106,79,0.2) 0%,transparent 100%);border:1px solid #c9a84c;border-radius:10px;padding:14px 20px;margin-bottom:14px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px}
+.result-title{color:#e8c96a;font-weight:700;font-size:16px}
+.result-sub{color:#8fbc8f;font-size:13px}
+.badge{background:#2d6a4f;border:1px solid #e8c96a;border-radius:6px;padding:4px 12px;color:#e8c96a;font-size:12px;font-weight:700}
+.result-content{line-height:1.7}
+.r-header{color:#e8c96a;font-weight:700;font-size:15px;margin-top:18px;margin-bottom:6px;border-bottom:1px solid #1e3d28;padding-bottom:5px}
+.r-header:first-child{margin-top:0}
+.r-base{color:#52b788;font-weight:700;font-size:15px;margin-bottom:4px}
+.r-bullet{color:#e8f5e9;line-height:1.6;font-size:14px;margin-bottom:3px;padding-left:8px}
+.r-meta{color:#8fbc8f;font-size:12px;margin-top:4px}
+.warning{background:#1a1000;border:1px solid #3d2e00;border-radius:8px;padding:10px 14px;color:#b8960a;font-size:12px;margin-bottom:14px;line-height:1.6}
+.error-box{text-align:center}
+.error-msg{color:#ff6b6b;margin-bottom:16px;line-height:1.6}
+.field{margin-bottom:10px}
+.field label{display:block;color:#e8c96a;font-size:12px;margin-bottom:4px}
+.msg-ok{color:#52b788;font-size:13px;font-weight:700;margin-bottom:10px}
+.msg-ko{color:#ff6b6b;font-size:13px;font-weight:700;margin-bottom:10px}
+.stats-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:14px}
+.stat-card{background:#0f2318;border:1px solid #1e3d28;border-radius:8px;padding:12px 8px;text-align:center}
+.stat-label{color:#8fbc8f;font-size:11px;text-transform:uppercase;margin-bottom:4px}
+.stat-val{color:#e8c96a;font-weight:700;font-size:20px}
+.prono-item{border-bottom:1px solid #1e3d28;padding-bottom:12px;margin-bottom:12px}
+.prono-item:last-child{border-bottom:none;margin-bottom:0}
+.prono-top{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;flex-wrap:wrap;gap:6px}
+.prono-date{color:#e8c96a;font-weight:700;font-size:14px}
+.prono-hippo{color:#8fbc8f;font-size:12px;margin-left:8px}
+.score-b{border-radius:6px;padding:2px 10px;font-weight:700;font-size:13px}
+.prono-base{color:#52b788;font-size:13px;margin-bottom:2px}
+.prono-out{color:#e8f5e9;font-size:13px;margin-bottom:2px}
+.prono-jok{color:#c9a84c;font-size:13px;margin-bottom:2px}
+.prono-arr{color:#8fbc8f;font-size:12px;margin-top:4px}
+.prono-not{color:#8fbc8f;font-size:12px;font-style:italic}
+.prono-pend{color:#c9a84c;font-size:12px;margin-top:4px}
+.hidden{display:none}
+.sources{color:#8fbc8f;font-size:14px;line-height:1.8}
+.sh{color:#52b788}
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div class="header-sub">◆ Agent Pronostiqueur IA ◆</div>
+  <h1>QUINTÉ MASTER <span>v5.1</span></h1>
+  <div class="header-date" id="dateDisplay"></div>
+  <div class="tabs">
+    <button class="tab active" onclick="switchTab('analyse',this)">🎯 Analyse</button>
+    <button class="tab" onclick="switchTab('journal',this)">📊 Journal</button>
+  </div>
+</div>
+
+<div class="container">
+  <div id="tab-analyse">
+    <div id="phase-accueil">
+      <div id="memory-info" class="memory-badge hidden"></div>
+      <div class="card">
+        <div class="card-title">🔍 Sources consultées</div>
+        <div class="sources">
+          ✅ <span class="sh">LeTROT</span> — historique trot officiel<br>
+          ✅ <span class="sh">France Galop</span> — galop + obstacles<br>
+          ✅ <span class="sh">Turfoo.fr</span> — partants et cotes du jour<br>
+          ✅ <span class="sh">Mémoire Supabase</span> — apprentissage continu
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-title">💡 Infos supplémentaires (optionnel)</div>
+        <textarea id="infosSupp" placeholder="ex: terrain très lourd, favori blessé..."></textarea>
+      </div>
+      <button class="btn-main" onclick="lancerAnalyse()">🎯 Analyser le Quinté+ du jour</button>
+    </div>
+
+    <div id="phase-loading" class="card loading hidden">
+      <div class="loading-icon" id="loadingIcon">🔍</div>
+      <div class="loading-title" id="loadingTitle">Étape 1/2 — Collecte des données</div>
+      <div class="loading-steps">
+        <div class="step">
+          <div class="dot" id="dot1" style="background:#c9a84c"></div>
+          <span id="step1" style="color:#e8c96a">Collecte LeTROT · France Galop · Turfoo</span>
+        </div>
+        <div class="step">
+          <div class="dot" id="dot2" style="background:#1e3d28"></div>
+          <span id="step2" style="color:#8fbc8f">Analyse + apprentissage mémoire</span>
+        </div>
+      </div>
+      <div class="dots">
+        <div class="dot-anim"></div>
+        <div class="dot-anim"></div>
+        <div class="dot-anim"></div>
+      </div>
+    </div>
+
+    <div id="phase-result" class="hidden">
+      <div class="result-header">
+        <div>
+          <div class="result-title" id="resultTitle">Quinté+ du jour</div>
+          <div class="result-sub">✅ Sauvegardé dans le journal</div>
+        </div>
+        <div class="badge">IA SONNET 4.6</div>
+      </div>
+      <div class="card"><div class="result-content" id="resultContent"></div></div>
+      <button class="btn-secondary" onclick="document.getElementById('saisie-form').classList.remove('hidden')">✏️ Saisir le résultat après la course</button>
+      <div id="saisie-form" class="card hidden" style="border-color:#c9a84c">
+        <div class="card-title">✏️ Résultat officiel</div>
+        <div class="field"><label>Arrivée officielle</label><input type="text" id="saisieArrivee" placeholder="ex: 3-5-12-11-1"></div>
+        <div class="field"><label>Score (chevaux trouvés sur 5)</label>
+          <select id="saisieScore">
+            <option value="">-- Choisir --</option>
+            <option value="0">0/5</option><option value="1">1/5</option>
+            <option value="2">2/5</option><option value="3">3/5</option>
+            <option value="4">4/5</option><option value="5">5/5</option>
+          </select>
+        </div>
+        <div class="field"><label>Notes (optionnel)</label><input type="text" id="saisieNotes" placeholder="ex: outsider non vu, terrain trop lourd..."></div>
+        <div id="saisieMsg"></div>
+        <button class="btn-main" onclick="sauvegarderResultat()">💾 Sauvegarder le résultat</button>
+      </div>
+      <div class="warning">⚠️ Pronostic basé sur sources officielles. Jouez de manière responsable.</div>
+      <div class="btn-grid">
+        <button class="btn-back" onclick="retourAccueil()">← Nouvelle analyse</button>
+        <button class="btn-copy" onclick="copier()">📋 Copier</button>
+      </div>
+    </div>
+
+    <div id="phase-error" class="card error-box hidden">
+      <div style="font-size:36px;margin-bottom:12px">⚠️</div>
+      <div class="error-msg" id="errorMsg"></div>
+      <button class="btn-main" onclick="retourAccueil()">🔄 Réessayer</button>
+    </div>
+  </div>
+
+  <div id="tab-journal" class="hidden">
+    <div class="stats-grid">
+      <div class="stat-card"><div class="stat-label">Courses</div><div class="stat-val" id="sTotal">0</div></div>
+      <div class="stat-card"><div class="stat-label">5/5 🏆</div><div class="stat-val" id="sCinq">0</div></div>
+      <div class="stat-card"><div class="stat-label">4/5 ⭐</div><div class="stat-val" id="sQuatre">0</div></div>
+      <div class="stat-card"><div class="stat-label">Moyenne</div><div class="stat-val" id="sMoy">—</div></div>
+    </div>
+    <div class="card">
+      <div class="card-title">📋 Historique des pronostics</div>
+      <div id="journalContent"><div style="color:#8fbc8f;text-align:center;padding:20px">Chargement...</div></div>
+    </div>
+    <button class="btn-back" onclick="chargerHistorique()" style="margin-top:0">🔄 Actualiser</button>
+  </div>
+</div>
+
+<script>
+// NOTE SÉCURITÉ : la clé Anthropic n'est PLUS ici — elle vit uniquement
+// dans les variables d'environnement Netlify, utilisée par les fonctions
+// serverless (/netlify/functions/claude-search.js et claude-analyse.js).
+// SURL et SKEY restent ici volontairement : SKEY est la clé "anon" Supabase,
+// conçue pour être publique. Sa sécurité vient des règles RLS appliquées
+// via supabase_rls_setup.sql (lecture seule pour ce rôle, écriture bloquée).
+var SURL = "https://prlcvqwpwjcttvpvard.supabase.co";
+var SKEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBybGN2cXdwd2pjdHR2dnB2YXJkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODIzODkwMTQsImV4cCI6MjA5Nzk2NTAxNH0.wK3AEX18Mjp8i47lcJMpUkTxJs-BlHpAkY3uL7OaUXc";
+
+var pronostics = [];
+var currentId = "";
+var resultText = "";
+
+document.getElementById("dateDisplay").textContent = "📅 " + new Date().toLocaleDateString("fr-FR", {weekday:"long",day:"numeric",month:"long",year:"numeric"});
+
+function switchTab(tab, btn) {
+  document.querySelectorAll(".tab").forEach(function(t){t.classList.remove("active")});
+  btn.classList.add("active");
+  document.getElementById("tab-analyse").classList.toggle("hidden", tab !== "analyse");
+  document.getElementById("tab-journal").classList.toggle("hidden", tab !== "journal");
+  if (tab === "journal") chargerHistorique();
+}
+
+async function sbFetch(endpoint, method, body) {
+  method = method || "GET";
+  var headers = {
+    "apikey": SKEY,
+    "Authorization": "Bearer " + SKEY,
+    "Content-Type": "application/json"
+  };
+  if (method === "POST") headers["Prefer"] = "return=representation";
+  var opts = {method: method, headers: headers};
+  if (body) opts.body = JSON.stringify(body);
+  var res = await fetch(SURL + "/rest/v1/" + endpoint, opts);
+  var txt = await res.text();
+  if (!res.ok) throw new Error("Supabase: " + txt);
+  return txt ? JSON.parse(txt) : null;
+}
+
+async function chargerHistorique() {
+  try {
+    var data = await sbFetch("pronostics?order=date.desc&limit=30");
+    pronostics = Array.isArray(data) ? data : [];
+    afficherJournal();
+    afficherMemoire();
+  } catch(e) { console.log("Historique:", e.message); }
+}
+
+function formaterHistorique() {
+  var av = pronostics.filter(function(p){return p.score > 0});
+  if (!av.length) return "";
+  return av.slice(0,10).map(function(p){
+    return p.date + " | " + p.hippodrome + " | " + p.discipline + " | Base: " + p.pronostic_base + " | Score: " + p.score + "/5";
+  }).join("\n");
+}
+
+function afficherMemoire() {
+  var av = pronostics.filter(function(p){return p.score > 0});
+  var el = document.getElementById("memory-info");
+  if (av.length > 0) {
+    var moy = (av.reduce(function(a,b){return a+(b.score||0)},0)/av.length).toFixed(1);
+    el.innerHTML = "🧠 <strong style='color:#e8c96a'>" + av.length + " pronostics</strong> en mémoire · Score moyen : <strong style='color:#52b788'>" + moy + "/5</strong>";
+    el.classList.remove("hidden");
+  }
+}
+
+function afficherJournal() {
+  var av = pronostics.filter(function(p){return p.score > 0});
+  document.getElementById("sTotal").textContent = av.length;
+  document.getElementById("sCinq").textContent = pronostics.filter(function(p){return p.score===5}).length;
+  document.getElementById("sQuatre").textContent = pronostics.filter(function(p){return p.score===4}).length;
+  document.getElementById("sMoy").textContent = av.length > 0 ? (av.reduce(function(a,b){return a+(b.score||0)},0)/av.length).toFixed(1) : "—";
+
+  var c = document.getElementById("journalContent");
+  if (!pronostics.length) {
+    c.innerHTML = "<div style='color:#8fbc8f;text-align:center;padding:20px'>Aucun pronostic encore sauvegardé.<br>Lancez votre première analyse !</div>";
+    return;
+  }
+  c.innerHTML = pronostics.map(function(p) {
+    var sc = p.score >= 4 ? "#52b788" : p.score === 3 ? "#c9a84c" : p.score > 0 ? "#e74c3c" : "#8fbc8f";
+    return "<div class='prono-item'>" +
+      "<div class='prono-top'><div><span class='prono-date'>" + p.date + "</span>" +
+      (p.hippodrome ? "<span class='prono-hippo'>" + p.hippodrome + "</span>" : "") +
+      (p.discipline ? "<span class='prono-hippo'>· " + p.discipline + "</span>" : "") + "</div>" +
+      (p.score > 0 ? "<div class='score-b' style='background:" + sc + "22;border:1px solid " + sc + ";color:" + sc + "'>" + p.score + "/5</div>" : "") +
+      "</div>" +
+      (p.pronostic_base ? "<div class='prono-base'>Base : " + p.pronostic_base + "</div>" : "") +
+      (p.pronostic_outsiders ? "<div class='prono-out'>Outsiders : " + p.pronostic_outsiders + "</div>" : "") +
+      (p.pronostic_joker ? "<div class='prono-jok'>Joker : " + p.pronostic_joker + "</div>" : "") +
+      (p.resultat_officiel ? "<div class='prono-arr'>Arrivée : " + p.resultat_officiel + "</div>" : "") +
+      (p.notes ? "<div class='prono-not'>" + p.notes + "</div>" : "") +
+      (!p.resultat_officiel ? "<div class='prono-pend'>⏳ Résultat non encore saisi</div>" : "") +
+      "</div>";
+  }).join("");
+}
+
+function showPhase(p) {
+  ["accueil","loading","result","error"].forEach(function(x){
+    document.getElementById("phase-"+x).classList.toggle("hidden", x !== p);
+  });
+}
+
+function retourAccueil() {
+  showPhase("accueil");
+  document.getElementById("saisie-form").classList.add("hidden");
+  document.getElementById("saisieMsg").textContent = "";
+}
+
+function copier() {
+  if (navigator.clipboard) navigator.clipboard.writeText(resultText);
+  alert("Pronostic copié !");
+}
+
+function afficherResultat(text) {
+  var c = document.getElementById("resultContent");
+  c.innerHTML = "";
+  text.split("\n").forEach(function(line) {
+    var d = document.createElement("div");
+    var isH = ["⚠️","🎯","📋","🧠","⚡"].some(function(e){return line.startsWith(e)});
+    var isB = line.startsWith("Base :") || line.startsWith("Outsiders") || line.startsWith("Joker");
+    var isBu = line.startsWith("•");
+    var isM = line.startsWith("HIPPODROME") || line.startsWith("DISCIPLINE");
+    if (isH) d.className = "r-header";
+    else if (isB) d.className = "r-base";
+    else if (isBu) d.className = "r-bullet";
+    else if (isM) d.className = "r-meta";
+    else if (!line.trim()) d.style.height = "4px";
+    else d.style.cssText = "color:#e8f5e9;line-height:1.6;font-size:14px";
+    d.textContent = line;
+    c.appendChild(d);
+  });
+}
+
+async function lancerAnalyse() {
+  var today = new Date().toLocaleDateString("fr-FR",{day:"numeric",month:"long",year:"numeric"});
+  var infos = document.getElementById("infosSupp").value;
+  currentId = "";
+  showPhase("loading");
+
+  try {
+    // ÉTAPE 1 : Collecte
+    document.getElementById("loadingIcon").textContent = "🔍";
+    document.getElementById("loadingTitle").textContent = "Étape 1/2 — Collecte des données";
+    document.getElementById("dot1").style.background = "#c9a84c";
+    document.getElementById("step1").style.color = "#e8c96a";
+
+    var r1 = await fetch("/.netlify/functions/claude-search", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({today: today, infos: infos})
+    });
+
+    var d1 = await r1.json();
+    if (d1.error) throw new Error("API Anthropic : " + d1.error.message);
+    var donnees = (d1.content||[]).filter(function(b){return b.type==="text"}).map(function(b){return b.text}).join("\n");
+    if (!donnees) throw new Error("Impossible de collecter les données du jour.");
+
+    // ÉTAPE 2 : Analyse
+    document.getElementById("loadingIcon").textContent = "🧠";
+    document.getElementById("loadingTitle").textContent = "Étape 2/2 — Analyse avec mémoire";
+    document.getElementById("dot1").style.background = "#52b788";
+    document.getElementById("dot2").style.background = "#c9a84c";
+    document.getElementById("step1").style.color = "#52b788";
+    document.getElementById("step2").style.color = "#e8c96a";
+
+    var r2 = await fetch("/.netlify/functions/claude-analyse", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({today: today, donnees: donnees, historique: formaterHistorique()})
+    });
+
+    var d2 = await r2.json();
+    if (d2.error) throw new Error("API Anthropic : " + d2.error.message);
+    var prono = (d2.content||[]).filter(function(b){return b.type==="text"}).map(function(b){return b.text}).join("\n");
+    if (!prono) throw new Error("Impossible de générer le pronostic.");
+
+    var base = (prono.match(/Base\s*:\s*([^\n]+)/)||["",""])[1].trim();
+    var outs = (prono.match(/Outsiders\s*:\s*([^\n]+)/)||["",""])[1].trim();
+    var jok = (prono.match(/Joker[^:]*:\s*([^\n]+)/)||["",""])[1].trim();
+    var jeu = (prono.match(/JEU\s*:\s*([^\n]+)/)||["",""])[1].trim();
+    var hipp = (prono.match(/HIPPODROME\s*:\s*([^\n]+)/)||["",""])[1].trim();
+    var disc = (prono.match(/DISCIPLINE\s*:\s*([^\n]+)/)||["",""])[1].trim();
+
+    try {
+      var rSave = await fetch("/.netlify/functions/save-pronostic", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({
+          date: new Date().toISOString().split("T")[0],
+          hippodrome: hipp, discipline: disc,
+          pronostic_base: base, pronostic_outsiders: outs,
+          pronostic_joker: jok, style_jeu: jeu,
+          resultat_officiel: "", score: 0, notes: ""
+        })
+      });
+      var saved = await rSave.json();
+      if (Array.isArray(saved) && saved[0] && saved[0].id) currentId = saved[0].id;
+      await chargerHistorique();
+    } catch(e) { console.log("Sauvegarde:", e.message); }
+
+    resultText = prono;
+    afficherResultat(prono);
+    showPhase("result");
+
+  } catch(e) {
+    document.getElementById("errorMsg").textContent = e.message;
+    showPhase("error");
+  }
+}
+
+async function sauvegarderResultat() {
+  var arr = document.getElementById("saisieArrivee").value;
+  var sc = document.getElementById("saisieScore").value;
+  var not = document.getElementById("saisieNotes").value;
+  var msg = document.getElementById("saisieMsg");
+
+  if (!currentId) {
+    msg.className = "msg-ko";
+    msg.textContent = "❌ Lancez d'abord une nouvelle analyse.";
+    return;
+  }
+  try {
+    var rUpd = await fetch("/.netlify/functions/update-resultat", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({
+        id: currentId,
+        resultat_officiel: arr,
+        score: parseInt(sc) || 0,
+        notes: not
+      })
+    });
+    var updResult = await rUpd.json();
+    if (updResult && updResult.error) throw new Error(updResult.error);
+    msg.className = "msg-ok";
+    msg.textContent = "✅ Résultat sauvegardé !";
+    document.getElementById("saisie-form").classList.add("hidden");
+    await chargerHistorique();
+  } catch(e) {
+    msg.className = "msg-ko";
+    msg.textContent = "❌ Erreur : " + e.message;
+  }
+}
+
+chargerHistorique();
+</script>
+</body>
+</html>
