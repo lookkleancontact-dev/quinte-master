@@ -362,7 +362,7 @@ async function lancerAnalyse() {
     });
 
     var d1 = await r1.json();
-    if (d1.error) throw new Error("API Anthropic : " + d1.error.message);
+    if (d1.error) throw new Error("API Anthropic : " + (typeof d1.error === "string" ? d1.error : d1.error.message));
     var donnees = (d1.content||[]).filter(function(b){return b.type==="text"}).map(function(b){return b.text}).join("\n");
     if (!donnees) throw new Error("Impossible de collecter les données du jour.");
 
@@ -381,7 +381,7 @@ async function lancerAnalyse() {
     });
 
     var d2 = await r2.json();
-    if (d2.error) throw new Error("API Anthropic : " + d2.error.message);
+    if (d2.error) throw new Error("API Anthropic : " + (typeof d2.error === "string" ? d2.error : d2.error.message));
     var prono = (d2.content||[]).filter(function(b){return b.type==="text"}).map(function(b){return b.text}).join("\n");
     if (!prono) throw new Error("Impossible de générer le pronostic.");
 
