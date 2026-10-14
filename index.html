@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>QUINTÉ MASTER v5.1 — sécurisée</title>
+<title>QUINTÉ MASTER v6</title>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
 body{background:#0a1a0f;font-family:Georgia,serif;color:#e8f5e9;min-height:100vh}
@@ -80,7 +80,7 @@ textarea{min-height:70px;resize:vertical}
 
 <div class="header">
   <div class="header-sub">◆ Agent Pronostiqueur IA ◆</div>
-  <h1>QUINTÉ MASTER <span>v5.1</span></h1>
+  <h1>QUINTÉ MASTER <span>v6</span></h1>
   <div class="header-date" id="dateDisplay"></div>
   <div class="tabs">
     <button class="tab active" onclick="switchTab('analyse',this)">🎯 Analyse</button>
@@ -93,12 +93,13 @@ textarea{min-height:70px;resize:vertical}
     <div id="phase-accueil">
       <div id="memory-info" class="memory-badge hidden"></div>
       <div class="card">
-        <div class="card-title">🔍 Sources consultées</div>
+        <div class="card-title">🔍 Sources du consensus (v6)</div>
         <div class="sources">
-          ✅ <span class="sh">LeTROT</span> — historique trot officiel<br>
-          ✅ <span class="sh">France Galop</span> — galop + obstacles<br>
-          ✅ <span class="sh">Turfoo.fr</span> — partants et cotes du jour<br>
-          ✅ <span class="sh">Mémoire Supabase</span> — apprentissage continu
+          ✅ <span class="sh">API PMU</span> — partants, musiques, cotes officielles<br>
+          ✅ <span class="sh">Marché</span> — score tiré des cotes<br>
+          ✅ <span class="sh">Forme</span> — calculée sur la musique, pénalité si disqualification (trot)<br>
+          ✅ <span class="sh">Claude</span> — avis indépendant, cotes masquées<br>
+          ✅ <span class="sh">Journal Supabase</span> — détail conservé pour calibrer plus tard
         </div>
       </div>
       <div class="card">
@@ -307,7 +308,7 @@ function afficherResultat(text) {
   c.innerHTML = "";
   text.split("\n").forEach(function(line) {
     var d = document.createElement("div");
-    var isH = ["⚠️","🎯","📋","🧠","⚡"].some(function(e){return line.startsWith(e)});
+    var isH = ["⚠️","🎯","📋","🧠","⚡","🚦","📊","🧪"].some(function(e){return line.startsWith(e)});
     var isB = line.startsWith("Base :") || line.startsWith("Outsiders") || line.startsWith("Joker");
     var isBu = line.startsWith("•");
     var isM = line.startsWith("HIPPODROME") || line.startsWith("DISCIPLINE");
@@ -342,55 +343,88 @@ async function chargerCotesPmu() {
   }
 }
 
+function nomCheval(d, num) {
+  var c = (d.chevaux || []).filter(function(x){ return x.numPmu === num; })[0];
+  return "N°" + num + (c ? " " + c.nom : "");
+}
+
+function construireTexteV6(d) {
+  var L = [];
+  var ic = d.indice_confiance === null ? "non mesurable" : d.indice_confiance + "/100";
+  L.push("🚦 CONFIANCE : " + ic + " — " + d.niveau);
+  L.push(d.recommandation);
+  L.push("");
+  L.push("🎯 PRONOSTIC FINAL");
+  L.push("Base : " + d.base.map(function(n){ return nomCheval(d, n); }).join(", "));
+  L.push("Complément : " + d.complement.map(function(n){ return nomCheval(d, n); }).join(", "));
+  L.push("Outsiders : " + (d.outsiders.length ? d.outsiders.map(function(n){ return nomCheval(d, n); }).join(", ") : "aucun signal faible détecté"));
+  L.push("Joker (signal faible) : " + (d.outsiders.length ? nomCheval(d, d.outsiders[0]) : "aucun"));
+  L.push("");
+  L.push("📋 JEU : DÉSORDRE — l'ordre exact reste très improbable");
+  L.push("");
+  L.push("📊 CLASSEMENT (final | marché · Claude · forme)");
+  d.chevaux.slice(0, 10).forEach(function(c) {
+    var f = function(x){ return x === null || x === undefined ? "–" : x; };
+    L.push("• " + c.rang + ". N°" + c.numPmu + " " + c.nom + " — " + f(c.score_final) +
+      " (marché " + f(c.score_marche) + " · Claude " + f(c.score_claude) + " · forme " + f(c.score_forme) + ")" +
+      (c.cote ? " cote " + c.cote : "") +
+      (c.penalite_allure > 0 ? " ⚠ allure" : ""));
+  });
+  if (d.pieges.length || d.avertissements.length) {
+    L.push("");
+    L.push("⚠️ POINTS D'ATTENTION");
+    d.pieges.forEach(function(x){ L.push("• " + x); });
+    d.avertissements.forEach(function(x){ L.push("• " + x); });
+  }
+  if (d.commentaire) { L.push(""); L.push("🧠 AVIS DE CLAUDE"); L.push(d.commentaire); }
+  L.push("");
+  L.push("🧪 LIMITES : poids des sources (marché 40 %, Claude 30 %, forme 30 %) et seuils de confiance non encore calibrés sur l'historique ; aucun gain n'est garanti.");
+  L.push("");
+  L.push("HIPPODROME : " + (d.meta.hippodrome || ""));
+  L.push("DISCIPLINE : " + (d.meta.discipline || ""));
+  return L.join("\n");
+}
+
 async function lancerAnalyse() {
-  var today = new Date().toLocaleDateString("fr-FR",{day:"numeric",month:"long",year:"numeric"});
   var infos = document.getElementById("infosSupp").value;
   currentId = "";
   showPhase("loading");
 
   try {
-    // ÉTAPE 1 : Collecte
-    document.getElementById("loadingIcon").textContent = "🔍";
-    document.getElementById("loadingTitle").textContent = "Étape 1/2 — Collecte des données";
+    document.getElementById("loadingIcon").textContent = "📡";
+    document.getElementById("loadingTitle").textContent = "Étape 1/2 — Données officielles PMU";
     document.getElementById("dot1").style.background = "#c9a84c";
     document.getElementById("step1").style.color = "#e8c96a";
 
-    var r1 = await fetch("/.netlify/functions/claude-search", {
+    var minuterie = setTimeout(function() {
+      document.getElementById("loadingIcon").textContent = "🧠";
+      document.getElementById("loadingTitle").textContent = "Étape 2/2 — Consensus des sources";
+      document.getElementById("dot1").style.background = "#52b788";
+      document.getElementById("dot2").style.background = "#c9a84c";
+      document.getElementById("step1").style.color = "#52b788";
+      document.getElementById("step2").style.color = "#e8c96a";
+    }, 3000);
+
+    var r = await fetch("/.netlify/functions/analyse-v6", {
       method: "POST",
       headers: {"Content-Type": "application/json"},
-      body: JSON.stringify({today: today, infos: infos})
+      body: JSON.stringify({infos: infos})
     });
+    clearTimeout(minuterie);
 
-    var d1 = await r1.json();
-    if (d1.error) throw new Error("API Anthropic : " + (typeof d1.error === "string" ? d1.error : d1.error.message));
-    var donnees = (d1.content||[]).filter(function(b){return b.type==="text"}).map(function(b){return b.text}).join("\n");
-    if (!donnees) throw new Error("Impossible de collecter les données du jour.");
+    var d;
+    try { d = await r.json(); }
+    catch (e) { throw new Error("Réponse illisible du serveur (code " + r.status + "). Le calcul a peut-être dépassé le délai : réessayez."); }
+    if (d.error) throw new Error(typeof d.error === "string" ? d.error : (d.error.message || "Erreur inconnue"));
 
-    // ÉTAPE 2 : Analyse
-    document.getElementById("loadingIcon").textContent = "🧠";
-    document.getElementById("loadingTitle").textContent = "Étape 2/2 — Analyse avec mémoire";
-    document.getElementById("dot1").style.background = "#52b788";
-    document.getElementById("dot2").style.background = "#c9a84c";
-    document.getElementById("step1").style.color = "#52b788";
-    document.getElementById("step2").style.color = "#e8c96a";
-
-    var r2 = await fetch("/.netlify/functions/claude-analyse", {
-      method: "POST",
-      headers: {"Content-Type": "application/json"},
-      body: JSON.stringify({today: today, donnees: donnees, historique: formaterHistorique()})
-    });
-
-    var d2 = await r2.json();
-    if (d2.error) throw new Error("API Anthropic : " + (typeof d2.error === "string" ? d2.error : d2.error.message));
-    var prono = (d2.content||[]).filter(function(b){return b.type==="text"}).map(function(b){return b.text}).join("\n");
-    if (!prono) throw new Error("Impossible de générer le pronostic.");
+    var prono = construireTexteV6(d);
 
     var base = (prono.match(/Base\s*:\s*([^\n]+)/)||["",""])[1].trim();
     var outs = (prono.match(/Outsiders\s*:\s*([^\n]+)/)||["",""])[1].trim();
     var jok = (prono.match(/Joker[^:]*:\s*([^\n]+)/)||["",""])[1].trim();
     var jeu = (prono.match(/JEU\s*:\s*([^\n]+)/)||["",""])[1].trim();
-    var hipp = (prono.match(/HIPPODROME\s*:\s*([^\n]+)/)||["",""])[1].trim();
-    var disc = (prono.match(/DISCIPLINE\s*:\s*([^\n]+)/)||["",""])[1].trim();
+    var hipp = (d.meta.hippodrome || "");
+    var disc = (d.meta.discipline || "");
 
     try {
       var rSave = await fetch("/.netlify/functions/save-pronostic", {
@@ -401,7 +435,9 @@ async function lancerAnalyse() {
           hippodrome: hipp, discipline: disc,
           pronostic_base: base, pronostic_outsiders: outs,
           pronostic_joker: jok, style_jeu: jeu,
-          resultat_officiel: "", score: 0, notes: ""
+          resultat_officiel: "", score: 0, notes: "",
+          indice_confiance: d.indice_confiance,
+          detail_v6: {chevaux: d.chevaux, poids: d.poids, sources: d.sources, niveau: d.niveau, selection5: d.selection5}
         })
       });
       var saved = await rSave.json();
