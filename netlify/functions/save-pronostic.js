@@ -11,18 +11,31 @@ exports.handler = async function (event) {
   try {
     const body = JSON.parse(event.body || "{}");
 
-    const res = await fetch(process.env.SUPABASE_URL + "/rest/v1/pronostics", {
-      method: "POST",
-      headers: {
-        "apikey": process.env.SUPABASE_SERVICE_KEY,
-        "Authorization": "Bearer " + process.env.SUPABASE_SERVICE_KEY,
-        "Content-Type": "application/json",
-        "Prefer": "return=representation"
-      },
-      body: JSON.stringify(body)
-    });
+    async function envoyer(payload) {
+      return fetch(process.env.SUPABASE_URL + "/rest/v1/pronostics", {
+        method: "POST",
+        headers: {
+          "apikey": process.env.SUPABASE_SERVICE_KEY,
+          "Authorization": "Bearer " + process.env.SUPABASE_SERVICE_KEY,
+          "Content-Type": "application/json",
+          "Prefer": "return=representation"
+        },
+        body: JSON.stringify(payload)
+      });
+    }
 
-    const text = await res.text();
+    let res = await envoyer(body);
+    let text = await res.text();
+
+    // Si les colonnes v6 n'existent pas encore dans Supabase, on réessaie sans elles
+    if (!res.ok && (text.indexOf("detail_v6") !== -1 || text.indexOf("indice_confiance") !== -1)) {
+      const sansV6 = Object.assign({}, body);
+      delete sansV6.detail_v6;
+      delete sansV6.indice_confiance;
+      res = await envoyer(sansV6);
+      text = await res.text();
+    }
+
     if (!res.ok) {
       return { statusCode: 502, body: JSON.stringify({ error: "Supabase : " + text }) };
     }
