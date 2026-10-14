@@ -106,6 +106,12 @@ textarea{min-height:70px;resize:vertical}
         <textarea id="infosSupp" placeholder="ex: terrain très lourd, favori blessé..."></textarea>
       </div>
       <button class="btn-main" onclick="lancerAnalyse()">🎯 Analyser le Quinté+ du jour</button>
+
+      <div class="card" style="margin-top:14px">
+        <div class="card-title">📡 Cotes PMU en direct (test étape 1 — v6)</div>
+        <button class="btn-secondary" onclick="chargerCotesPmu()">Charger les cotes PMU du jour</button>
+        <div id="cotesPmuResult" style="margin-top:10px;font-size:13px;color:#8fbc8f"></div>
+      </div>
     </div>
 
     <div id="phase-loading" class="card loading hidden">
@@ -189,7 +195,7 @@ textarea{min-height:70px;resize:vertical}
 // SURL et SKEY restent ici volontairement : SKEY est la clé "anon" Supabase,
 // conçue pour être publique. Sa sécurité vient des règles RLS appliquées
 // via supabase_rls_setup.sql (lecture seule pour ce rôle, écriture bloquée).
-var SURL = "https://prlcvqwpwjcttvpvard.supabase.co";
+var SURL = "https://prlcvqwpwjcttvvpvard.supabase.co";
 var SKEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBybGN2cXdwd2pjdHR2dnB2YXJkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODIzODkwMTQsImV4cCI6MjA5Nzk2NTAxNH0.wK3AEX18Mjp8i47lcJMpUkTxJs-BlHpAkY3uL7OaUXc";
 
 var pronostics = [];
@@ -314,6 +320,26 @@ function afficherResultat(text) {
     d.textContent = line;
     c.appendChild(d);
   });
+}
+
+async function chargerCotesPmu() {
+  var el = document.getElementById("cotesPmuResult");
+  el.innerHTML = "⏳ Chargement des cotes PMU...";
+  try {
+    var r = await fetch("/.netlify/functions/pmu-cotes");
+    var d = await r.json();
+    if (d.error) {
+      el.innerHTML = "<span style='color:#ff6b6b'>❌ " + d.error + "</span>";
+      return;
+    }
+    var html = "<div style='color:#e8c96a;margin-bottom:6px'>" + (d.hippodrome || "") + " · " + (d.discipline || "") + " (R" + d.numReunion + "C" + d.numCourse + ")</div>";
+    html += d.chevaux.map(function (c) {
+      return "N°" + c.numPmu + " " + c.nom + " — cote " + (c.cote || "?") + " — score " + (c.score_cotes !== null ? c.score_cotes : "n/a") + "/100";
+    }).join("<br>");
+    el.innerHTML = html;
+  } catch (e) {
+    el.innerHTML = "<span style='color:#ff6b6b'>❌ " + e.message + "</span>";
+  }
 }
 
 async function lancerAnalyse() {
