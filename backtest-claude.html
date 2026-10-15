@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Quinté Master — Test avec Claude</title>
+<style>
+  body{margin:0;padding:24px 14px;background:#0a1a10;color:#d8e8dc;font-family:Georgia,serif;line-height:1.5}
+  .wrap{max-width:820px;margin:0 auto}
+  h1{color:#e8c96a;font-size:22px;margin:0 0 4px}
+  h2{color:#e8c96a;font-size:16px;margin:0 0 8px}
+  .sub{color:#8fbc8f;font-size:14px;margin-bottom:18px}
+  .card{background:#112a1a;border:1px solid #1f3d2a;border-radius:12px;padding:16px;margin-bottom:14px}
+  label{display:block;font-size:13px;color:#e8c96a;margin:8px 0 4px}
+  input[type=date]{background:#06120a;color:#d8e8dc;border:1px solid #1f3d2a;border-radius:8px;padding:8px;font-size:15px;width:100%;box-sizing:border-box}
+  .btns{display:flex;gap:10px;margin-top:14px}
+  button{background:#2a6b4a;color:#e8c96a;border:1px solid #c9a84c;border-radius:10px;padding:12px 18px;font-size:15px;font-weight:bold;cursor:pointer;flex:1}
+  button.sec{background:#1a2f22;color:#d8e8dc;border-color:#1f3d2a;flex:0 0 120px}
+  button:disabled{opacity:.5;cursor:default}
+  .barre{height:10px;background:#06120a;border-radius:6px;overflow:hidden;margin:10px 0 4px}
+  .barre>div{height:100%;width:0;background:#c9a84c;transition:width .2s}
+  .petit{font-size:12px;color:#8fbc8f}
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  th,td{padding:7px 6px;border-bottom:1px solid #1f3d2a;text-align:right}
+  th:first-child,td:first-child{text-align:left}
+  th{color:#e8c96a;font-weight:normal;font-size:12px}
+  .verdict{padding:12px;border-radius:10px;background:#0f2417;border:1px solid #c9a84c;margin-bottom:14px;font-size:14px}
+  .ok{color:#52b788}.warn{color:#e8c96a}.ko{color:#ff6b6b}
+  textarea{width:100%;height:130px;background:#06120a;color:#9db8a4;border:1px solid #1f3d2a;border-radius:8px;font-size:11px;box-sizing:border-box;padding:8px}
+  a.lien{color:#8fbc8f;font-size:12px;cursor:pointer;text-decoration:underline}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Test avec Claude sur courses passées</h1>
+  <div class="sub">Payant : un appel à Claude par course. Même protocole que le test gratuit.</div>
+
+  <div class="card">
+    <div class="petit">
+      <b>Règle fixée avant le test :</b> une stratégie n'est retenue que si elle place plus de chevaux que les 5 favoris du marché <i>et</i> que l'écart dépasse sa marge d'erreur. Quatre stratégies seulement sont comparées, définies à l'avance, pour éviter de bricoler les réglages jusqu'à trouver un résultat flatteur.<br><br>
+      Coût estimé : de l'ordre de 0,01 $ par course, soit environ 1 $ pour 100 courses (estimation à vérifier sur votre facture Anthropic). Les jours déjà testés sont gardés en mémoire dans ce navigateur et ne sont pas refacturés.
+    </div>
+    <label>Du</label><input type="date" id="debut" value="2026-08-25">
+    <label>Au</label><input type="date" id="fin">
+    <div class="btns">
+      <button id="go" onclick="lancer()">Lancer le test</button>
+      <button id="stop" class="sec" onclick="arreter()" disabled>Arrêter</button>
+    </div>
+    <div class="barre"><div id="progres"></div></div>
+    <div class="petit" id="etat">En attente.</div>
+    <div style="margin-top:8px"><a class="lien" onclick="viderMemoire()">Vider la mémoire de ce navigateur</a></div>
+  </div>
+
+  <div id="sortie"></div>
+</div>
+
+<script>
+var arretDemande = false;
+var PREFIXE = "qm_btc_v1_";
+var POIDS_V6 = {marche: 0.40, claude: 0.30, forme: 0.30};
+
+(function(){
+  var d = new Date(); d.setDate(d.getDate() - 1);
+  document.getElementById("fin").value = d.toISOString().split("T")[0];
+})();
+
+function echapper(t){ return String(t).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
+
+function lireCache(date) { try { var v = localStorage.getItem(PREFIXE + date); return v ? JSON.parse(v) : null; } catch(e) { return null; } }
+function ecrireCache(date, obj) { try { localStorage.setItem(PREFIXE + date, JSON.stringify(obj)); } catch(e) {} }
+function viderMemoire() {
+  try {
+    Object.keys(localStorage).filter(function(k){ return k.indexOf(PREFIXE) === 0; }).forEach(function(k){ localStorage.removeItem(k); });
+    document.getElementById("etat").textContent = "Mémoire vidée.";
+  } catch(e) {}
+}
+
+function listeDates(debut, fin) {
+  var out = [], d = new Date(debut + "T00:00:00Z"), f = new Date(fin + "T00:00:00Z");
+  while (d <= f && out.length < 200) { out.push(d.toISOString().split("T")[0]); d.setUTCDate(d.getUTCDate() + 1); }
+  return out;
+}
+
+// ---- Composition des sélections à partir des scores bruts
+function classer(chevaux, poids, avecPenalite) {
+  var liste = [];
+  chevaux.forEach(function(c) {
+    var num = 0, den = 0;
+    Object.keys(poids).forEach(function(k) {
+      var v = c[k];
+      if (v !== null && v !== undefined) { num += poids[k] * v; den += poids[k]; }
+    });
+    if (den > 0) {
+      var s = num / den;
+      if (avecPenalite) s = s * (1 - (c.pen || 0));
+      liste.push({n: c.n, s: s});
+    }
+  });
+  liste.sort(function(a, b){ return b.s - a.s; });
+  return liste.length >= 5 ? liste.slice(0, 5).map(function(x){ return x.n; }) : null;
+}
+
+var STRATEGIES = [
+  {id: "marche",  nom: "Marché (5 favoris)",              poids: {marche: 1},                    pen: false},
+  {id: "claude",  nom: "Claude seul",                     poids: {claude: 1},                    pen: false},
+  {id: "mc",      nom: "Marché + Claude (50/50)",         poids: {marche: 0.5, claude: 0.5},     pen: false},
+  {id: "v6",      nom: "v6 complet (40/30/30)",           poids: POIDS_V6,                       pen: true}
+];
+
+function hitsDe(picks, arrivee) { return picks.filter(function(n){ return arrivee.indexOf(n) !== -1; }).length; }
+
+function stats(v) {
+  var n = v.length;
+  if (!n) return {n:0, moy:null, se:null, p3:0, p4:0};
+  var moy = v.reduce(function(a,b){return a+b;},0) / n;
+  var sd = n > 1 ? Math.sqrt(v.reduce(function(a,b){return a+(b-moy)*(b-moy);},0) / (n-1)) : 0;
+  return {n:n, moy:moy, se: sd/Math.sqrt(n),
+    p3: v.filter(function(x){return x>=3;}).length, p4: v.filter(function(x){return x>=4;}).length};
+}
+
+function agreger(res) {
+  // courses exploitables : Claude a noté assez de chevaux pour toutes les stratégies
+  var ok = res.filter(function(r){ return r.ok; });
+  var lignes = ok.map(function(r) {
+    var o = {r: r, hits: {}};
+    var complet = true;
+    STRATEGIES.forEach(function(s) {
+      var picks = classer(r.chevaux, s.poids, s.pen);
+      if (!picks) { complet = false; return; }
+      o.hits[s.id] = hitsDe(picks, r.arrivee);
+    });
+    o.complet = complet;
+    return o;
+  }).filter(function(o){ return o.complet; });
+
+  var out = {n: lignes.length, strat: {}, vs: {}, hasard: null};
+  STRATEGIES.forEach(function(s) {
+    out.strat[s.id] = stats(lignes.map(function(o){ return o.hits[s.id]; }));
+    if (s.id !== "marche") {
+      var diffs = lignes.map(function(o){ return o.hits[s.id] - o.hits.marche; });
+      out.vs[s.id] = stats(diffs);
+    }
+  });
+  out.hasard = lignes.length ? lignes.reduce(function(a,o){ return a + o.r.hasard_attendu; }, 0) / lignes.length : null;
+  return out;
+}
+
+function f2(x){ return x === null || x === undefined ? "–" : x.toFixed(2); }
+function marge(s){ return s.n > 1 ? " ±" + (2*s.se).toFixed(2) : ""; }
+
+function conclusion(a) {
+  var l = [];
+  if (a.n < 30) l.push('<span class="warn">⚠️ Moins de 30 courses exploitables : les chiffres sont trop fragiles pour conclure.</span>');
+  var retenues = [];
+  STRATEGIES.forEach(function(s) {
+    if (s.id === "marche") return;
+    var d = a.vs[s.id];
+    if (d.n > 1 && d.moy > 2 * d.se) retenues.push(s.nom + " (" + (d.moy>0?"+":"") + d.moy.toFixed(2) + " ±" + (2*d.se).toFixed(2) + ")");
+  });
+  if (a.n >= 30) {
+    if (retenues.length) l.push('<span class="ok">✅ Au moins une stratégie bat les 5 favoris au-delà de la marge d\'erreur : ' + retenues.join(" ; ") + ".</span>");
+    else l.push('<span class="warn">⚠️ Aucune stratégie ne bat les 5 favoris au-delà de la marge d\'erreur. Les 5 favoris restent la référence à battre.</span>');
+  }
+  l.push('<span class="petit">Marge d\'erreur (±) approximative, à 95 %. Un écart plus petit que la marge ne prouve rien.</span>');
+  return l.join("<br>");
+}
+
+function afficher(res, bilan) {
+  var a = agreger(res);
+  var h = '<div class="verdict">' + conclusion(a) + "</div>";
+  h += '<div class="card"><h2>Chevaux dans le top 5 (sur 5), mêmes courses pour toutes les lignes</h2><table>' +
+       "<tr><th>Stratégie</th><th>Courses</th><th>Moyenne</th><th>≥3</th><th>≥4</th><th>Écart vs 5 favoris</th></tr>";
+  STRATEGIES.forEach(function(s) {
+    var st = a.strat[s.id], d = a.vs[s.id];
+    var ecart = d ? ((d.moy>0?"+":"") + f2(d.moy) + marge(d)) : "–";
+    var cls = d && d.n > 1 ? (d.moy > 2*d.se ? "ok" : (d.moy < -2*d.se ? "ko" : "")) : "";
+    h += "<tr><td>" + s.nom + "</td><td>" + st.n + "</td><td>" + f2(st.moy) + marge(st) + "</td><td>" + st.p3 + "</td><td>" + st.p4 +
+         '</td><td class="' + cls + '">' + ecart + "</td></tr>";
+  });
+  h += "<tr><td>Hasard (théorique)</td><td>" + a.n + "</td><td>" + f2(a.hasard) + "</td><td>–</td><td>–</td><td>–</td></tr></table></div>";
+  h += '<div class="card"><h2>Journal du test</h2><div class="petit">' + bilan.total + " jours demandés · " + bilan.ok + " courses testées (" + bilan.cache + " déjà en mémoire) · " +
+       bilan.sans_quinte + " sans Quinté · " + bilan.sans_arrivee + " sans arrivée · " + bilan.indispo + " indisponibles · " + bilan.claude_err + " erreurs Claude</div></div>";
+  var compact = res.filter(function(r){return r.ok;}).map(function(r){
+    return {date:r.date, arrivee:r.arrivee, partants:r.nbPartants, discipline:r.discipline, musique:r.musique, chevaux:r.chevaux};
+  });
+  h += '<div class="card"><h2>Rapport complet</h2><div class="petit">Scores bruts de chaque course : à copier et envoyer à Claude pour analyse.</div><textarea readonly>' + echapper(JSON.stringify(compact)) + "</textarea></div>";
+  document.getElementById("sortie").innerHTML = h;
+}
+
+function arreter(){ arretDemande = true; document.getElementById("etat").textContent = "Arrêt demandé…"; }
+
+async function lancer() {
+  var debut = document.getElementById("debut").value, fin = document.getElementById("fin").value;
+  if (!debut || !fin || debut > fin) { document.getElementById("etat").textContent = "Vérifiez les dates."; return; }
+  var dates = listeDates(debut, fin);
+  arretDemande = false;
+  var res = [];
+  document.getElementById("go").disabled = true; document.getElementById("stop").disabled = false;
+  document.getElementById("sortie").innerHTML = "";
+  var bilan = {total: 0, ok: 0, cache: 0, sans_quinte: 0, sans_arrivee: 0, indispo: 0, claude_err: 0};
+  var erreursDeSuite = 0, messageArret = "";
+
+  for (var i = 0; i < dates.length; i++) {
+    if (arretDemande) break;
+    document.getElementById("progres").style.width = Math.round(100 * i / dates.length) + "%";
+    document.getElementById("etat").textContent = "Jour " + (i+1) + " / " + dates.length + " (" + dates[i] + ")";
+    bilan.total++;
+
+    var c = lireCache(dates[i]);
+    if (c) { res.push(c); bilan.ok++; bilan.cache++; continue; }
+
+    try {
+      var r = await fetch("/.netlify/functions/backtest-claude?date=" + dates[i]);
+      var d;
+      try { d = await r.json(); } catch (e) { d = {ok: false, raison: "delai"}; }
+      if (d.ok) {
+        res.push(d); ecrireCache(dates[i], d); bilan.ok++; erreursDeSuite = 0;
+      } else if (d.raison === "pas_de_quinte") { bilan.sans_quinte++; erreursDeSuite = 0; }
+      else if (d.raison === "arrivee_absente") { bilan.sans_arrivee++; erreursDeSuite = 0; }
+      else if (d.raison === "claude_erreur") {
+        bilan.claude_err++; erreursDeSuite++;
+        messageArret = "Claude a répondu par une erreur : " + (d.message || "inconnue");
+      } else {
+        bilan.indispo++; erreursDeSuite++;
+        messageArret = d.raison === "delai" ? "Le serveur n'a pas répondu à temps (délai dépassé)." : "Données PMU indisponibles.";
+      }
+    } catch (e) { bilan.indispo++; erreursDeSuite++; messageArret = "Connexion impossible."; }
+
+    if (erreursDeSuite >= 3) { arretDemande = true; break; }
+    await new Promise(function(ok){ setTimeout(ok, 250); });
+  }
+
+  document.getElementById("progres").style.width = "100%";
+  var etat = (arretDemande ? "Arrêté. " : "Terminé. ") + bilan.ok + " courses testées.";
+  if (erreursDeSuite >= 3) etat += " Arrêt automatique après 3 erreurs de suite : " + messageArret;
+  document.getElementById("etat").textContent = etat;
+  document.getElementById("go").disabled = false; document.getElementById("stop").disabled = true;
+  afficher(res, bilan);
+}
+</script>
+</body>
+</html>
