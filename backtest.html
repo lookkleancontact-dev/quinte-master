@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Quinté Master — Test sur courses passées</title>
+<style>
+  body{margin:0;padding:24px 14px;background:#0a1a10;color:#d8e8dc;font-family:Georgia,serif;line-height:1.5}
+  .wrap{max-width:820px;margin:0 auto}
+  h1{color:#e8c96a;font-size:22px;margin:0 0 4px}
+  h2{color:#e8c96a;font-size:16px;margin:0 0 8px}
+  .sub{color:#8fbc8f;font-size:14px;margin-bottom:18px}
+  .card{background:#112a1a;border:1px solid #1f3d2a;border-radius:12px;padding:16px;margin-bottom:14px}
+  label{display:block;font-size:13px;color:#e8c96a;margin:8px 0 4px}
+  input[type=date]{background:#06120a;color:#d8e8dc;border:1px solid #1f3d2a;border-radius:8px;padding:8px;font-size:15px;width:100%;box-sizing:border-box}
+  .btns{display:flex;gap:10px;margin-top:14px}
+  button{background:#2a6b4a;color:#e8c96a;border:1px solid #c9a84c;border-radius:10px;padding:12px 18px;font-size:15px;font-weight:bold;cursor:pointer;flex:1}
+  button.sec{background:#1a2f22;color:#d8e8dc;border-color:#1f3d2a;flex:0 0 120px}
+  button:disabled{opacity:.5;cursor:default}
+  .barre{height:10px;background:#06120a;border-radius:6px;overflow:hidden;margin:10px 0 4px}
+  .barre>div{height:100%;width:0;background:#c9a84c;transition:width .2s}
+  .petit{font-size:12px;color:#8fbc8f}
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  th,td{padding:7px 6px;border-bottom:1px solid #1f3d2a;text-align:right}
+  th:first-child,td:first-child{text-align:left}
+  th{color:#e8c96a;font-weight:normal;font-size:12px}
+  .verdict{padding:12px;border-radius:10px;background:#0f2417;border:1px solid #c9a84c;margin-bottom:14px;font-size:14px}
+  .ok{color:#52b788}.warn{color:#e8c96a}.ko{color:#ff6b6b}
+  textarea{width:100%;height:130px;background:#06120a;color:#9db8a4;border:1px solid #1f3d2a;border-radius:8px;font-size:11px;box-sizing:border-box;padding:8px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Test sur courses passées</h1>
+  <div class="sub">Gratuit : aucun appel à Claude. Compare le marché, la forme et leur combinaison à l'arrivée officielle.</div>
+
+  <div class="card">
+    <div class="petit">Pour la suite (test avec Claude), gardez des dates à partir du 1er juillet 2026. Chaque jour compte un Quinté, comptez environ 3 secondes par jour.</div>
+    <label>Du</label><input type="date" id="debut" value="2026-07-01">
+    <label>Au</label><input type="date" id="fin">
+    <div class="btns">
+      <button id="go" onclick="lancer()">Lancer le test</button>
+      <button id="stop" class="sec" onclick="arreter()" disabled>Arrêter</button>
+    </div>
+    <div class="barre"><div id="progres"></div></div>
+    <div class="petit" id="etat">En attente.</div>
+  </div>
+
+  <div id="sortie"></div>
+</div>
+
+<script>
+var arretDemande = false;
+var resultats = [];
+
+(function(){
+  var d = new Date(); d.setDate(d.getDate() - 1);
+  document.getElementById("fin").value = d.toISOString().split("T")[0];
+})();
+
+function echapper(t){ return String(t).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
+
+function listeDates(debut, fin) {
+  var out = [], d = new Date(debut + "T00:00:00Z"), f = new Date(fin + "T00:00:00Z");
+  while (d <= f && out.length < 200) { out.push(d.toISOString().split("T")[0]); d.setUTCDate(d.getUTCDate() + 1); }
+  return out;
+}
+
+function stats(v) {
+  var n = v.length;
+  if (!n) return {n:0, moy:null, se:null, p3:0, p4:0, p5:0};
+  var moy = v.reduce(function(a,b){return a+b;},0) / n;
+  var sd = n > 1 ? Math.sqrt(v.reduce(function(a,b){return a+(b-moy)*(b-moy);},0) / (n-1)) : 0;
+  return {
+    n:n, moy:moy, se: sd/Math.sqrt(n),
+    p3: v.filter(function(x){return x>=3;}).length,
+    p4: v.filter(function(x){return x>=4;}).length,
+    p5: v.filter(function(x){return x>=5;}).length
+  };
+}
+
+function appariee(a, b) { // a et b : listes de hits sur les mêmes courses
+  var diffs = a.map(function(x,i){ return x - b[i]; });
+  var s = stats(diffs);
+  return {n:s.n, moy:s.moy, se:s.se};
+}
+
+function agreger(res) {
+  var ok = res.filter(function(r){ return r.ok && r.strategies && r.strategies.marche; });
+  var propres = ok.filter(function(r){ return r.forme_valide && r.strategies.forme && r.strategies.combine; });
+  var hasard = function(l){ return l.length ? l.reduce(function(a,r){return a + r.hasard_attendu;},0) / l.length : null; };
+  return {
+    toutes: { n: ok.length, marche: stats(ok.map(function(r){return r.strategies.marche.hits;})), hasard: hasard(ok) },
+    propres: {
+      n: propres.length,
+      marche: stats(propres.map(function(r){return r.strategies.marche.hits;})),
+      forme: stats(propres.map(function(r){return r.strategies.forme.hits;})),
+      combine: stats(propres.map(function(r){return r.strategies.combine.hits;})),
+      hasard: hasard(propres),
+      combine_vs_marche: appariee(
+        propres.map(function(r){return r.strategies.combine.hits;}),
+        propres.map(function(r){return r.strategies.marche.hits;}))
+    }
+  };
+}
+
+function f1(x){ return x === null || x === undefined ? "–" : x.toFixed(2); }
+function marge(s){ return s.n > 1 ? " ±" + (2*s.se).toFixed(2) : ""; }
+function ligne(nom, s) {
+  return "<tr><td>" + nom + "</td><td>" + s.n + "</td><td>" + f1(s.moy) + marge(s) + "</td><td>" + s.p3 + "</td><td>" + s.p4 + "</td><td>" + s.p5 + "</td></tr>";
+}
+function ligneHasard(h, n) {
+  return "<tr><td>Hasard (théorique)</td><td>" + n + "</td><td>" + f1(h) + "</td><td>–</td><td>–</td><td>–</td></tr>";
+}
+var ENTETE = "<tr><th>Stratégie</th><th>Courses</th><th>Chevaux dans le top 5 (sur 5)</th><th>≥3</th><th>≥4</th><th>5/5</th></tr>";
+
+function conclusion(a) {
+  var p = a.propres, l = [];
+  if (a.toutes.n < 30) l.push('<span class="warn">⚠️ Moins de 30 courses exploitables : les chiffres sont trop fragiles pour conclure.</span>');
+  if (p.n < 30) {
+    l.push('<span class="warn">⚠️ Seulement ' + p.n + ' course(s) avec musique propre : la comparaison avec la forme est trop fragile.</span>');
+  } else {
+    var c = p.combine_vs_marche;
+    var signif = Math.abs(c.moy) > 2 * c.se;
+    var sens = c.moy > 0 ? "meilleure" : "moins bonne";
+    if (signif) l.push('<span class="' + (c.moy > 0 ? "ok" : "ko") + '">' + (c.moy > 0 ? "✅" : "❌") + " La combinaison marché + forme est " + sens + " que les 5 favoris : " + (c.moy>0?"+":"") + c.moy.toFixed(2) + " cheval par course (±" + (2*c.se).toFixed(2) + ").</span>");
+    else l.push('<span class="warn">⚠️ La combinaison marché + forme ne se distingue pas des 5 favoris : écart de ' + (c.moy>0?"+":"") + c.moy.toFixed(2) + " ± " + (2*c.se).toFixed(2) + " cheval par course, dans la marge d'erreur.</span>");
+  }
+  l.push('<span class="petit">La marge d\'erreur (±) est approximative, à 95 %. Un écart plus petit que la marge ne prouve rien.</span>');
+  return l.join("<br>");
+}
+
+function afficher(res, bilan) {
+  var a = agreger(res);
+  var h = '<div class="verdict">' + conclusion(a) + "</div>";
+  h += '<div class="card"><h2>Toutes les courses avec arrivée</h2><table>' + ENTETE +
+       ligne("Marché (5 favoris)", a.toutes.marche) + ligneHasard(a.toutes.hasard, a.toutes.n) + "</table></div>";
+  h += '<div class="card"><h2>Courses à musique propre (comparaison équitable)</h2><table>' + ENTETE +
+       ligne("Marché (5 favoris)", a.propres.marche) + ligne("Forme seule", a.propres.forme) +
+       ligne("Marché + forme", a.propres.combine) + ligneHasard(a.propres.hasard, a.propres.n) + "</table>" +
+       '<div class="petit" style="margin-top:8px">Les trois lignes portent sur exactement les mêmes courses.</div></div>';
+  h += '<div class="card"><h2>Journal du test</h2><div class="petit">' +
+       bilan.total + " jours demandés · " + bilan.ok + " courses exploitées · " + bilan.contaminees + " écartées pour musique douteuse (forme non utilisée) · " +
+       bilan.sans_quinte + " sans Quinté · " + bilan.indispo + " indisponibles · " + bilan.sans_arrivee + " sans arrivée</div></div>";
+  var compact = res.filter(function(r){return r.ok;}).map(function(r){
+    return {date:r.date, arrivee:r.arrivee, partants:r.nbPartants, musique:r.musique, marche:r.strategies.marche, forme:r.strategies.forme, combine:r.strategies.combine};
+  });
+  h += '<div class="card"><h2>Rapport complet</h2><div class="petit">À copier et envoyer à Claude pour analyse.</div><textarea readonly>' + echapper(JSON.stringify(compact)) + "</textarea></div>";
+  document.getElementById("sortie").innerHTML = h;
+}
+
+function arreter(){ arretDemande = true; document.getElementById("etat").textContent = "Arrêt demandé…"; }
+
+async function lancer() {
+  var debut = document.getElementById("debut").value, fin = document.getElementById("fin").value;
+  if (!debut || !fin || debut > fin) { document.getElementById("etat").textContent = "Vérifiez les dates."; return; }
+  var dates = listeDates(debut, fin);
+  arretDemande = false; resultats = [];
+  document.getElementById("go").disabled = true; document.getElementById("stop").disabled = false;
+  document.getElementById("sortie").innerHTML = "";
+  var bilan = {total: 0, ok: 0, contaminees: 0, sans_quinte: 0, indispo: 0, sans_arrivee: 0};
+
+  for (var i = 0; i < dates.length; i++) {
+    if (arretDemande) break;
+    document.getElementById("progres").style.width = Math.round(100 * i / dates.length) + "%";
+    document.getElementById("etat").textContent = "Jour " + (i+1) + " / " + dates.length + " (" + dates[i] + ")";
+    bilan.total++;
+    try {
+      var r = await fetch("/.netlify/functions/backtest-jour?date=" + dates[i]);
+      var d = await r.json();
+      if (d.ok) {
+        resultats.push(d); bilan.ok++;
+        if (!d.forme_valide) bilan.contaminees++;
+      } else if (d.raison === "pas_de_quinte") bilan.sans_quinte++;
+      else if (d.raison === "arrivee_absente") bilan.sans_arrivee++;
+      else bilan.indispo++;
+    } catch (e) { bilan.indispo++; }
+    await new Promise(function(ok){ setTimeout(ok, 250); });
+  }
+
+  document.getElementById("progres").style.width = "100%";
+  document.getElementById("etat").textContent = (arretDemande ? "Arrêté. " : "Terminé. ") + bilan.ok + " courses exploitées.";
+  document.getElementById("go").disabled = false; document.getElementById("stop").disabled = true;
+  afficher(resultats, bilan);
+}
+</script>
+</body>
+</html>
