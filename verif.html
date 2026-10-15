@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Quinté Master — Vérification des données passées</title>
+<style>
+  body{margin:0;padding:24px 14px;background:#0a1a10;color:#d8e8dc;font-family:Georgia,serif;line-height:1.5}
+  .wrap{max-width:760px;margin:0 auto}
+  h1{color:#e8c96a;font-size:22px;margin:0 0 4px}
+  .sub{color:#8fbc8f;font-size:14px;margin-bottom:18px}
+  .card{background:#112a1a;border:1px solid #1f3d2a;border-radius:12px;padding:16px;margin-bottom:14px}
+  label{display:block;font-size:13px;color:#e8c96a;margin:8px 0 4px}
+  input[type=date]{background:#06120a;color:#d8e8dc;border:1px solid #1f3d2a;border-radius:8px;padding:8px;font-size:15px;width:100%;box-sizing:border-box}
+  button{background:#2a6b4a;color:#e8c96a;border:1px solid #c9a84c;border-radius:10px;padding:12px 18px;font-size:15px;font-weight:bold;cursor:pointer;width:100%;margin-top:14px}
+  button:disabled{opacity:.6;cursor:wait}
+  .ligne{margin:6px 0;font-size:14px}
+  .titre{color:#e8c96a;font-weight:bold;margin-bottom:6px}
+  .ok{color:#52b788}.warn{color:#e8c96a}.ko{color:#ff6b6b}
+  .conclusion{font-size:15px;padding:12px;border-radius:10px;background:#0f2417;border:1px solid #c9a84c;margin-bottom:14px}
+  textarea{width:100%;height:150px;background:#06120a;color:#9db8a4;border:1px solid #1f3d2a;border-radius:8px;font-size:12px;box-sizing:border-box;padding:8px}
+  .petit{font-size:12px;color:#8fbc8f}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Vérification des données passées</h1>
+  <div class="sub">Test gratuit : aucun appel à Claude, aucun crédit consommé.</div>
+
+  <div class="card">
+    <div class="petit">Choisissez 3 dates passées (le test cherche le Quinté+ de chaque jour). Des dates récentes, depuis juillet 2026, sont préférables.</div>
+    <label>Date 1</label><input type="date" id="d1">
+    <label>Date 2</label><input type="date" id="d2">
+    <label>Date 3</label><input type="date" id="d3">
+    <button id="go" onclick="lancer()">Lancer la vérification</button>
+  </div>
+
+  <div id="sortie"></div>
+</div>
+
+<script>
+function iso(jours) {
+  var d = new Date(); d.setDate(d.getDate() - jours);
+  return d.toISOString().split("T")[0];
+}
+document.getElementById("d1").value = iso(3);
+document.getElementById("d2").value = iso(10);
+document.getElementById("d3").value = iso(30);
+
+function echapper(t) {
+  return String(t).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+function bloc(r) {
+  var h = '<div class="card"><div class="titre">📅 ' + echapper(r.date.slice(0,2) + "/" + r.date.slice(2,4) + "/" + r.date.slice(4)) + '</div>';
+  if (!r.ok) {
+    h += '<div class="ligne ko">❌ ' + echapper(r.erreur || "Échec") + '</div></div>';
+    return h;
+  }
+  var c = r.course;
+  h += '<div class="ligne ok">✅ Quinté+ trouvé : ' + echapper(c.hippodrome) + " — " + echapper(c.discipline) +
+       (c.distance ? " — " + c.distance + " m" : "") + " — " + r.nbPartants + " partants</div>";
+
+  if (r.arrivee.top) {
+    h += '<div class="ligne ok">✅ Arrivée officielle retrouvée : ' + r.arrivee.top.join(" - ") + '</div>';
+  } else {
+    h += '<div class="ligne ko">❌ Arrivée officielle introuvable : la récupération automatique des résultats ne marche pas avec cette méthode.</div>';
+  }
+
+  var f = r.musique.fuite;
+  if (f.verdict === "propre") {
+    h += '<div class="ligne ok">✅ Musique propre : elle ne contient pas le résultat de cette course (' + f.concordances + " concordance(s) sur " + f.testes + " chevaux testés).</div>";
+  } else if (f.verdict === "contaminée") {
+    h += '<div class="ligne ko">❌ Musique contaminée : elle contient déjà le résultat de cette course (' + f.concordances + " concordance(s) sur " + f.testes + "). Le score de forme serait faussé sur les courses passées.</div>";
+  } else if (f.verdict === "ambigu") {
+    h += '<div class="ligne warn">⚠️ Musique ambiguë : ' + f.concordances + " concordance(s) sur " + f.testes + ". Impossible de conclure sur cette date.</div>";
+  } else {
+    h += '<div class="ligne warn">⚠️ Test de la musique impossible : arrivée ou musiques insuffisantes.</div>';
+  }
+
+  var tauxCotes = r.cotes.renseignees / r.cotes.total;
+  if (tauxCotes >= 0.8) h += '<div class="ligne ok">✅ Cotes disponibles : ' + r.cotes.renseignees + "/" + r.cotes.total + " (cotes finales de la course)</div>";
+  else if (tauxCotes > 0) h += '<div class="ligne warn">⚠️ Cotes partielles : ' + r.cotes.renseignees + "/" + r.cotes.total + "</div>";
+  else h += '<div class="ligne ko">❌ Aucune cote disponible pour cette date.</div>';
+
+  return h + "</div>";
+}
+
+function conclusion(rapports) {
+  var ok = rapports.filter(function(r){ return r.ok; });
+  if (!ok.length) return "❌ Aucune date n'a pu être vérifiée. Copiez le rapport technique ci-dessous et envoyez-le moi.";
+  var arrivee = ok.every(function(r){ return r.arrivee.top; });
+  var contamine = ok.some(function(r){ return r.musique.fuite.verdict === "contaminée"; });
+  var propre = ok.every(function(r){ return r.musique.fuite.verdict === "propre"; });
+  var l = [];
+  l.push(arrivee ? "✅ Les résultats officiels sont récupérables." : "❌ Les résultats officiels ne sont pas (tous) récupérables.");
+  if (contamine) l.push("❌ La musique est contaminée sur les courses passées : le test sur d'anciennes courses fausserait le score de forme.");
+  else if (propre) l.push("✅ La musique est propre sur toutes les dates testées.");
+  else l.push("⚠️ L'état de la musique n'est pas tranché sur toutes les dates.");
+  if (arrivee && propre) l.push("👉 On peut construire le test de référence sur les courses passées.");
+  else l.push("👉 Copiez le rapport technique ci-dessous et envoyez-le moi : je dirai quoi ajuster avant de continuer.");
+  return l.join("<br>");
+}
+
+async function lancer() {
+  var dates = ["d1","d2","d3"].map(function(id){ return document.getElementById(id).value; }).filter(Boolean);
+  var sortie = document.getElementById("sortie");
+  var bouton = document.getElementById("go");
+  if (!dates.length) { sortie.innerHTML = '<div class="card ko">Choisissez au moins une date.</div>'; return; }
+  bouton.disabled = true; bouton.textContent = "Vérification en cours…";
+  sortie.innerHTML = '<div class="card">⏳ Interrogation de l\'API PMU…</div>';
+  try {
+    var r = await fetch("/.netlify/functions/verif-resultats?dates=" + encodeURIComponent(dates.join(",")));
+    var d;
+    try { d = await r.json(); }
+    catch (e) { throw new Error("Réponse illisible du serveur (code " + r.status + ")."); }
+    if (d.error) throw new Error(d.error);
+    var h = '<div class="conclusion">' + conclusion(d.rapports) + "</div>";
+    d.rapports.forEach(function(x){ h += bloc(x); });
+    h += '<div class="card"><div class="titre">Rapport technique</div><div class="petit">À copier et envoyer à Claude si un point est en échec.</div>' +
+         '<textarea id="rapport" readonly>' + echapper(JSON.stringify(d.rapports, null, 1)) + "</textarea></div>";
+    sortie.innerHTML = h;
+  } catch (e) {
+    sortie.innerHTML = '<div class="card ko">❌ ' + echapper(e.message) + "</div>";
+  }
+  bouton.disabled = false; bouton.textContent = "Lancer la vérification";
+}
+</script>
+</body>
+</html>
