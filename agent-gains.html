@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Agent par plages de gains — Quinté Master</title>
+<style>
+:root{
+  --bg:#f6f4ee; --card:#ffffff; --ink:#1d2421; --muted:#5f6a65; --line:#d9d6cb;
+  --accent:#0e6b5c; --accent-ink:#ffffff; --gold:#a8710f; --warn-bg:#fdf1d6; --warn-ink:#5b4208;
+  --bad:#a3361f;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#141917; --card:#1d2420; --ink:#e9eee9; --muted:#9aa7a0; --line:#34403a;
+    --accent:#3fb59e; --accent-ink:#0b1512; --gold:#e0a63a; --warn-bg:#3a2f12; --warn-ink:#f3dfae;
+    --bad:#e2765f;
+  }
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--bg);color:var(--ink);font:16px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;padding:16px;max-width:880px;margin:0 auto}
+h1{font:600 1.5rem/1.2 Georgia,"Iowan Old Style",serif;margin:8px 0 4px}
+h2{font:600 1.15rem/1.3 Georgia,serif;margin:0 0 8px}
+p{margin:0 0 8px}
+.muted{color:var(--muted);font-size:.9rem}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px;margin:12px 0}
+.row{display:flex;flex-wrap:wrap;gap:12px}
+.row>*{flex:1 1 200px}
+label{display:block;font-weight:600;font-size:.9rem;margin-bottom:4px}
+input[type=number],input[type=date],textarea{width:100%;padding:10px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--ink);font:inherit}
+textarea{min-height:90px}
+button{font:inherit;font-weight:600;padding:10px 14px;border-radius:8px;border:1px solid var(--accent);background:var(--accent);color:var(--accent-ink);cursor:pointer}
+button.alt{background:transparent;color:var(--accent)}
+button:focus-visible,input:focus-visible,textarea:focus-visible,summary:focus-visible{outline:3px solid var(--gold);outline-offset:2px}
+.plages{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px}
+.plage{border:2px solid var(--line);border-radius:10px;padding:12px;cursor:pointer;background:var(--card)}
+.plage input{margin-right:6px}
+.plage.on{border-color:var(--accent)}
+.plage b{font-size:1.02rem}
+.warn{background:var(--warn-bg);color:var(--warn-ink);border-radius:10px;padding:12px;margin:12px 0;font-size:.92rem}
+.err{color:var(--bad);font-weight:600}
+table{width:100%;border-collapse:collapse;font-size:.92rem}
+th,td{text-align:left;padding:6px 6px;border-bottom:1px solid var(--line)}
+.scroll{overflow-x:auto}
+.cheval{display:flex;gap:10px;padding:8px 0;border-bottom:1px solid var(--line)}
+.num{min-width:34px;height:34px;border-radius:50%;background:var(--accent);color:var(--accent-ink);display:flex;align-items:center;justify-content:center;font-weight:700}
+.num.out{background:var(--gold);color:#fff}
+.cheval small{color:var(--muted);display:block}
+.gains{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:10px;margin-top:10px}
+.gain{border:1px solid var(--line);border-radius:8px;padding:10px}
+.gain .big{font:600 1.25rem/1.2 Georgia,serif}
+details{margin-top:8px}
+summary{cursor:pointer;font-weight:600}
+</style>
+</head>
+<body>
+<h1>Agent par plages de gains</h1>
+<p class="muted">Vous choisissez la mise et la plage de gain visée. L'agent propose un ticket Quinté et un ticket Tiercé, avec le gain estimé en FCFA et la probabilité réelle d'y arriver.</p>
+
+<div class="warn"><b>À lire :</b> les gains affichés sont des <b>estimations théoriques</b> calculées à partir des cotes du marché, pas les rapports réels de betsporter.cm. Le rapport réel dépend de la masse de mises et du nombre de gagnants, il n'est connu qu'après la course. La probabilité, elle, est la vraie information : plus la plage est ambitieuse, plus elle est faible.</div>
+
+<section class="card">
+  <div class="row">
+    <div><label for="miseQ">Mise Quinté (FCFA, minimum 500)</label><input id="miseQ" type="number" min="500" step="100" value="500"></div>
+    <div><label for="miseT">Mise Tiercé (FCFA, minimum 400)</label><input id="miseT" type="number" min="400" step="100" value="400"></div>
+    <div><label for="dateC">Date de la course (vide = aujourd'hui)</label><input id="dateC" type="date"></div>
+  </div>
+  <p style="margin-top:12px"><label>Plage de gain visée</label></p>
+  <div class="plages" id="plages"></div>
+  <p style="margin-top:12px"><button id="go">Charger la course et proposer les tickets</button></p>
+  <p id="statut" class="muted"></p>
+</section>
+
+<section class="card" id="coursecard" hidden>
+  <h2 id="coursetitre">Course</h2>
+  <p class="muted">Décochez un cheval pour l'exclure du ticket (non-partant, information que vous avez et pas le marché).</p>
+  <div class="scroll"><table id="partants"></table></div>
+</section>
+
+<div id="tickets"></div>
+
+<section class="card">
+  <details>
+    <summary>Réglages du calcul</summary>
+    <div class="row" style="margin-top:10px">
+      <div><label for="prel">Prélèvement (%)</label><input id="prel" type="number" min="0" max="60" value="25"></div>
+      <div><label for="calib">Coefficient de calibration</label><input id="calib" type="number" min="0.05" max="3" step="0.05" value="0.5"></div>
+      <div><label for="fbas">Marge basse (×)</label><input id="fbas" type="number" min="0.1" max="1" step="0.05" value="0.5"></div>
+      <div><label for="fhaut">Marge haute (×)</label><input id="fhaut" type="number" min="1" max="10" step="0.5" value="2"></div>
+    </div>
+    <p class="muted" style="margin-top:8px">Gain estimé = mise × (1 − prélèvement) ÷ probabilité du ticket × coefficient. Le coefficient de départ (0,5) est volontairement prudent, parce que la masse est répartie entre plusieurs rapports. Après quelques courses, comparez avec les rapports réels de betsporter et ajustez ce coefficient jusqu'à ce que les estimations collent.</p>
+  </details>
+  <details>
+    <summary>Saisie manuelle si le chargement échoue</summary>
+    <p class="muted" style="margin-top:8px">Une ligne par cheval : numéro;nom;cote (exemple : 7;Idole du Gers;12.5)</p>
+    <textarea id="manuel" placeholder="1;Nom du cheval;4.2"></textarea>
+    <p style="margin-top:8px"><button class="alt" id="usemanuel">Utiliser cette saisie</button></p>
+  </details>
+</section>
+
+<script>
+(function(){
+var API_PROFIL = "/.netlify/functions/pmu-profil";
+var API_COTES = "/.netlify/functions/pmu-cotes";
+var $ = function(id){ return document.getElementById(id); };
+
+// ---- Plages : structure du ticket (nombre de bases / d'outsiders) et zone de cotes des outsiders
+var PLAGES = {
+  prudente:   { nom:"Prudente",   txt:"Proche du marché. Gain modeste, probabilité la plus élevée.", Q:{b:3,o:2}, T:{b:2,o:1}, lo:8,  hi:18 },
+  equilibree: { nom:"Équilibrée", txt:"Un à trois outsiders. Gain intéressant, probabilité faible.",   Q:{b:2,o:3}, T:{b:1,o:2}, lo:10, hi:30 },
+  ambitieuse: { nom:"Ambitieuse", txt:"Plusieurs outsiders. Grosse cagnotte possible, probabilité très faible.", Q:{b:1,o:4}, T:{b:1,o:2}, lo:15, hi:60 }
+};
+var plageChoisie = "equilibree";
+var runners = [];
+var meta = {};
+
+function buildPlages(){
+  var box = $("plages"); box.innerHTML = "";
+  Object.keys(PLAGES).forEach(function(k){
+    var p = PLAGES[k];
+    var l = document.createElement("label");
+    l.className = "plage" + (k === plageChoisie ? " on" : "");
+    var i = document.createElement("input");
+    i.type = "radio"; i.name = "plage"; i.value = k; i.checked = (k === plageChoisie);
+    i.addEventListener("change", function(){ plageChoisie = k; buildPlages(); if(runners.length) render(); });
+    var b = document.createElement("b"); b.textContent = p.nom;
+    var d = document.createElement("div"); d.className = "muted"; d.textContent = p.txt;
+    l.appendChild(i); l.appendChild(b); l.appendChild(d); box.appendChild(l);
+  });
+}
+
+function fcfa(n){
+  if(!isFinite(n)) return "—";
+  var v = n >= 1e6 ? Math.round(n/1e4)*1e4 : n >= 1e4 ? Math.round(n/100)*100 : Math.round(n/10)*10;
+  return v.toLocaleString("fr-FR") + " FCFA";
+}
+function pct(x){ return (x*100).toLocaleString("fr-FR",{maximumFractionDigits:1}) + " %"; }
+function unSur(p){ if(!(p>0)) return "—"; var n = Math.round(1/p); return "1 chance sur " + n.toLocaleString("fr-FR"); }
+function num(id, def){ var v = parseFloat($(id).value); return isFinite(v) ? v : def; }
+
+// ---- Modèle de Harville : probabilités d'arrivée à partir des cotes
+function actifs(){
+  var a = runners.filter(function(r){ return !r.exclu && r.cote > 0; }).sort(function(x,y){ return x.cote - y.cote; });
+  var tot = 0; a.forEach(function(r){ tot += 1/r.cote; });
+  a.forEach(function(r,i){ r.p = (1/r.cote)/tot; r.rang = i+1; });
+  return a;
+}
+function pOrdre(arr){
+  var rem = 1, prob = 1;
+  for(var i=0;i<arr.length;i++){
+    if(rem <= 1e-9) return 0;
+    prob *= arr[i].p / rem; rem -= arr[i].p;
+  }
+  return prob;
+}
+function perms(arr){
+  if(arr.length <= 1) return [arr];
+  var out = [];
+  arr.forEach(function(x,i){
+    var rest = arr.slice(0,i).concat(arr.slice(i+1));
+    perms(rest).forEach(function(p){ out.push([x].concat(p)); });
+  });
+  return out;
+}
+function pDesordre(arr){
+  var s = 0; perms(arr).forEach(function(p){ s += pOrdre(p); }); return s;
+}
+
+// ---- Construction d'un ticket
+function construire(a, k, struct, plage){
+  var bases = a.slice(0, struct.b);
+  var reste = a.slice(struct.b);
+  var dansBande = reste.filter(function(r){ return r.cote >= plage.lo && r.cote <= plage.hi; });
+  var auDessus  = reste.filter(function(r){ return r.cote > plage.hi; });
+  var enDessous = reste.filter(function(r){ return r.cote < plage.lo; }).sort(function(x,y){ return y.cote - x.cote; });
+  var parSurprise = function(x,y){ return (y.surprise||0) - (x.surprise||0) || x.cote - y.cote; };
+  dansBande.sort(parSurprise); auDessus.sort(parSurprise);
+  var pool = dansBande.concat(auDessus).concat(enDessous);
+  var outs = pool.slice(0, struct.o);
+  var tous = bases.concat(outs);
+  if(tous.length < k) return null;
+  return { bases: bases, outs: outs, tous: tous };
+}
+
+function raison(r, role, plage){
+  var t = "Cote " + r.cote.toLocaleString("fr-FR") + ", " + pct(r.p) + " de chances de gagner selon le marché, " + r.rang + (r.rang===1?"er":"e") + " du marché.";
+  if(role === "base") return "Base solide. " + t + (r.musique ? " Musique : " + r.musique.trim() + "." : "") + (r.driver ? " Driver : " + r.driver + "." : "");
+  var zone = (r.cote >= plage.lo && r.cote <= plage.hi) ? "Dans la zone d'outsiders visée (" + plage.lo + " à " + plage.hi + ")." : "Hors zone visée, retenu faute de mieux.";
+  var prof = (r.surprise != null) ? " Score de surprise " + r.surprise + "/100 (profil " + r.profil + "/100, forme " + r.forme + ")." : " Pas de données de profil : choix sur la cote seule.";
+  var mus = r.musique ? " Musique : " + r.musique.trim() + "." : "";
+  var drv = r.driver ? " Driver : " + r.driver + "." : "";
+  var sig = (r.signaux && r.signaux.length) ? " " + r.signaux.join(" ") : "";
+  return "Outsider. " + t + " " + zone + prof + mus + drv + sig;
+}
+
+function carteTicket(titre, k, mise, miseMin, ticket, plage){
+  var prel = num("prel",25)/100, calib = num("calib",0.5), fb = num("fbas",0.5), fh = num("fhaut",2);
+  var sec = document.createElement("section"); sec.className = "card";
+  var h = document.createElement("h2"); h.textContent = titre; sec.appendChild(h);
+  if(!ticket){
+    var e = document.createElement("p"); e.className = "err";
+    e.textContent = "Pas assez de chevaux valides pour composer ce ticket."; sec.appendChild(e); return sec;
+  }
+  if(mise < miseMin){
+    var w = document.createElement("p"); w.className = "err";
+    w.textContent = "La mise est inférieure au minimum (" + miseMin + " FCFA). Les gains ci-dessous sont calculés avec le minimum.";
+    sec.appendChild(w); mise = miseMin;
+  }
+  var tri = ticket.tous.slice().sort(function(x,y){ return x.cote - y.cote; });
+  tri.forEach(function(r){
+    var isOut = ticket.outs.indexOf(r) !== -1;
+    var d = document.createElement("div"); d.className = "cheval";
+    var n = document.createElement("div"); n.className = "num" + (isOut ? " out" : ""); n.textContent = r.numPmu;
+    var c = document.createElement("div");
+    var nm = document.createElement("b"); nm.textContent = r.nom;
+    var sm = document.createElement("small"); sm.textContent = raison(r, isOut ? "out" : "base", plage);
+    c.appendChild(nm); c.appendChild(sm); d.appendChild(n); d.appendChild(c); sec.appendChild(d);
+  });
+  var pD = pDesordre(tri), pO = pOrdre(tri);
+  var g = document.createElement("div"); g.className = "gains";
+  [["Dans l'ordre", pO],["Dans le désordre", pD]].forEach(function(x){
+    var p = x[1], eq = p > 0 ? mise * (1-prel) / p * calib : NaN;
+    var b = document.createElement("div"); b.className = "gain";
+    var t1 = document.createElement("div"); t1.className = "muted"; t1.textContent = x[0] + " : " + unSur(p) + " (" + pct(p) + ")";
+    var t2 = document.createElement("div"); t2.className = "big"; t2.textContent = fcfa(eq * fb) + " à " + fcfa(eq * fh);
+    var t3 = document.createElement("div"); t3.className = "muted"; t3.textContent = "Estimation centrale : " + fcfa(eq) + " pour " + mise.toLocaleString("fr-FR") + " FCFA misés";
+    b.appendChild(t1); b.appendChild(t2); b.appendChild(t3); g.appendChild(b);
+  });
+  sec.appendChild(g);
+  var cp = document.createElement("p"); cp.style.marginTop = "10px";
+  var bt = document.createElement("button"); bt.className = "alt"; bt.textContent = "Copier ce ticket";
+  bt.addEventListener("click", function(){
+    var txt = titre + " — plage " + plage.nom + " — mise " + mise + " FCFA\n" +
+      tri.map(function(r){ return r.numPmu + " " + r.nom + " (cote " + r.cote + ")"; }).join("\n");
+    if(navigator.clipboard){ navigator.clipboard.writeText(txt).then(function(){ bt.textContent = "Ticket copié"; }); }
+    else { window.prompt("Copiez le ticket :", txt); }
+  });
+  cp.appendChild(bt); sec.appendChild(cp);
+  return sec;
+}
+
+function render(){
+  var a = actifs();
+  var plage = PLAGES[plageChoisie];
+  // tableau des partants
+  var t = $("partants"); t.innerHTML = "";
+  var hr = document.createElement("tr");
+  ["Jouer","N°","Cheval","Cote","Chance de gagner","Surprise"].forEach(function(x){ var th = document.createElement("th"); th.textContent = x; hr.appendChild(th); });
+  t.appendChild(hr);
+  runners.slice().sort(function(x,y){ return (x.cote||999) - (y.cote||999); }).forEach(function(r){
+    var tr = document.createElement("tr");
+    var td0 = document.createElement("td"); var cb = document.createElement("input"); cb.type = "checkbox"; cb.checked = !r.exclu;
+    cb.setAttribute("aria-label", "Inclure " + r.nom);
+    cb.addEventListener("change", function(){ r.exclu = !cb.checked; render(); });
+    td0.appendChild(cb); tr.appendChild(td0);
+    [r.numPmu, r.nom, r.cote ? r.cote.toLocaleString("fr-FR") : "—", (r.exclu || !r.p) ? "—" : pct(r.p), r.surprise != null ? r.surprise + "/100" : "—"].forEach(function(x){
+      var td = document.createElement("td"); td.textContent = x; tr.appendChild(td);
+    });
+    t.appendChild(tr);
+  });
+  $("coursetitre").textContent = "Course : " + (meta.hippodrome || "Quinté du jour") + (meta.numReunion ? " (R" + meta.numReunion + " C" + meta.numCourse + ")" : "");
+  $("coursecard").hidden = false;
+
+  var box = $("tickets"); box.innerHTML = "";
+  if(a.length < 8){
+    var w = document.createElement("div"); w.className = "warn";
+    w.textContent = "Moins de 8 chevaux valides : le modèle est peu fiable sur une si petite course.";
+    box.appendChild(w);
+  }
+  var tQ = construire(a, 5, plage.Q, plage), tT = construire(a, 3, plage.T, plage);
+  box.appendChild(carteTicket("Ticket Quinté (5 chevaux)", 5, num("miseQ",500), 500, tQ, plage));
+  box.appendChild(carteTicket("Ticket Tiercé (3 chevaux, même course)", 3, num("miseT",400), 400, tT, plage));
+}
+
+function lire(url){
+  return fetch(url).then(function(res){ return res.text().then(function(txt){
+    var j; try{ j = JSON.parse(txt); }catch(e){ throw new Error("Réponse illisible du serveur."); }
+    if(!res.ok) throw new Error(j.error || ("Erreur " + res.status));
+    return j;
+  }); });
+}
+
+function charger(){
+  var st = $("statut"); st.className = "muted"; st.textContent = "Chargement de la course et des profils…";
+  var d = $("dateC").value, q = d ? "?date=" + encodeURIComponent(d) : "";
+  lire(API_PROFIL + q)
+    .catch(function(e1){
+      st.textContent = "Profils indisponibles (" + e1.message + "), chargement des cotes seules…";
+      return lire(API_COTES + q);
+    })
+    .then(function(j){
+      meta = { hippodrome:j.hippodrome, numReunion:j.numReunion, numCourse:j.numCourse };
+      runners = (j.chevaux || []).filter(function(c){ return c.cote > 0 && c.statut !== "NON_PARTANT"; })
+        .map(function(c){ return { numPmu:c.numPmu, nom:c.nom, cote:c.cote, exclu:false,
+          surprise:c.score_surprise, profil:c.profil, forme:c.forme, musique:c.musique, driver:c.driver, signaux:c.signaux }; });
+      if(runners.length < 5) throw new Error("Moins de 5 chevaux avec une cote : utilisez la saisie manuelle.");
+      var dg = j.diagnostic, avec = dg ? dg.chevaux_avec_historique : 0;
+      st.textContent = runners.length + " chevaux chargés" + (dg ? (", historique trouvé pour " + avec + (dg.historique_detaille ? "" : " (historique détaillé indisponible, musique seule)")) : ", cotes seules") + ".";
+      render();
+    })
+    .catch(function(e){ st.className = "err"; st.textContent = e.message + " Vous pouvez utiliser la saisie manuelle dans les réglages."; });
+}
+
+function manuel(){
+  var lignes = $("manuel").value.split("\n"), out = [];
+  lignes.forEach(function(l){
+    var p = l.split(";"); if(p.length < 3) return;
+    var cote = parseFloat(p[2].replace(",", "."));
+    if(cote > 0) out.push({ numPmu:p[0].trim(), nom:p[1].trim(), cote:cote, exclu:false });
+  });
+  var st = $("statut");
+  if(out.length < 5){ st.className = "err"; st.textContent = "Il faut au moins 5 lignes valides (numéro;nom;cote)."; return; }
+  runners = out; meta = {}; st.className = "muted"; st.textContent = out.length + " chevaux saisis à la main.";
+  render();
+}
+
+buildPlages();
+$("go").addEventListener("click", charger);
+$("usemanuel").addEventListener("click", manuel);
+["miseQ","miseT","prel","calib","fbas","fhaut"].forEach(function(id){
+  $(id).addEventListener("input", function(){ if(runners.length) render(); });
+});
+})();
+</script>
+</body>
+</html>
