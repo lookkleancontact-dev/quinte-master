@@ -190,15 +190,29 @@ function analyser(c, perfs, course) {
   if (prev && prev.driver && drv && norm(prev.driver) !== norm(drv)) {
     bonus += 3;
     signaux.push("Change de driver : " + prev.driver + " puis " + drv + " (effet non démontré, à vérifier).");
+  } else if (c.driverChange === true) {
+    bonus += 3;
+    signaux.push("Change de driver, indiqué par le PMU (" + drv + "). Effet non démontré, à vérifier.");
   }
-  var dfNow = c.deferre || "", dfPrev = prev ? (prev.deferre || "") : null;
+  // Comparaison de ferrure : seulement si l'historique renseigne la ferrure de la course
+  // précédente. Dans les données PMU réelles ce champ est vide, le signal est alors désactivé
+  // (sinon tous les chevaux apparaîtraient à tort comme "changés").
+  var dfNow = c.deferre || "", dfPrev = (prev && prev.deferre) ? prev.deferre : null;
   if (dfPrev !== null && String(dfNow) !== String(dfPrev)) {
     if (!sans(dfNow) && sans(dfPrev)) { bonus += 6; signaux.push("Déferré ce jour (" + dfNow + ") alors qu'il ne l'était pas à la course précédente."); }
     else if (!sans(dfNow) || !sans(dfPrev)) { bonus += 3; signaux.push("Ferrure modifiée : " + (dfPrev || "aucune") + " puis " + (dfNow || "aucune") + "."); }
   }
-  var oeNow = c.oeilleres || "", oePrev = prev ? (prev.oeilleres || "") : null;
+  var oeNow = c.oeilleres || "", oePrev = (prev && prev.oeilleres) ? prev.oeilleres : null;
   if (oePrev !== null && !sans(oeNow) && sans(oePrev)) {
     bonus += 5; signaux.push("Oeillères ajoutées par rapport à la course précédente.");
+  }
+
+  var avis = String(c.avisEntraineur || "").toUpperCase();
+  if (/POSITIF/.test(avis)) { bonus += 5; signaux.push("Avis de l'entraîneur : positif."); }
+
+  if (course && course.distance && c.handicapDistance && c.handicapDistance > course.distance) {
+    bonus -= 3;
+    signaux.push("Recule de " + (c.handicapDistance - course.distance) + " m (handicap de distance).");
   }
 
   // Distance : a-t-il déjà bien figuré à peu près sur la distance du jour ?
@@ -272,6 +286,8 @@ exports.handler = async function (event) {
           cote: extraireCote(p),
           age: p.age || null,
           sexe: p.sexe || "",
+          race: p.race || "",
+          avisEntraineur: p.avisEntraineur || "",
           driver: nomDriver(p),
           entraineur: p.entraineur || "",
           deferre: p.deferre || "",
@@ -291,12 +307,23 @@ exports.handler = async function (event) {
         };
       });
 
-    // Classe : gains moyens par course, classés dans le lot
-    chevaux.forEach(function (c) { c._gpc = c.nbCourses > 0 ? c.gainsCarriere / c.nbCourses : 0; });
-    var gs = chevaux.map(function (c) { return c._gpc; }).sort(function (x, y) { return x - y; });
+    // Classe : gains moyens par course, classés dans le lot.
+    // Un cheval étranger a des gains de carrière (étranger inclus) mais un nombre de courses
+    // françaises partiel : le ratio est faux. On le met à 50 (neutre) et on le signale.
     chevaux.forEach(function (c) {
-      var rang = gs.indexOf(c._gpc);
-      c.classe = gs.length > 1 ? Math.round(100 * rang / (gs.length - 1)) : 50;
+      var nbMus = parseMusique(c.musique).length;
+      c._etranger = /ETRANGER/i.test(c.race) || nbMus > (c.nbCourses || 0);
+      c._gpc = c.nbCourses > 0 ? c.gainsCarriere / c.nbCourses : 0;
+    });
+    var gs = chevaux.filter(function (c) { return !c._etranger; })
+      .map(function (c) { return c._gpc; }).sort(function (x, y) { return x - y; });
+    chevaux.forEach(function (c) {
+      if (c._etranger || gs.length < 2) {
+        c.classe = 50;
+        if (c._etranger) c.signaux.push("Statistiques françaises partielles (cheval étranger ou historique à l'étranger) : classe non comparable, mise à 50.");
+      } else {
+        c.classe = Math.round(100 * gs.indexOf(c._gpc) / (gs.length - 1));
+      }
       c.profil = Math.round(clamp(0.55 * c.forme + 0.2 * c.classe + 0.15 * c.regularite + c._bonus, 0, 100));
     });
 
@@ -317,7 +344,7 @@ exports.handler = async function (event) {
       c.valeur_vs_marche = Math.round(valeur * 100);
       c.score_surprise = Math.round(clamp(50 + 100 * valeur * 0.6 + (c.profil - 50) * 0.4, 0, 100));
     });
-    chevaux.forEach(function (c) { delete c._bonus; delete c._gpc; });
+    chevaux.forEach(function (c) { delete c._bonus; delete c._gpc; delete c._etranger; });
 
     chevaux.sort(function (a, b) { return (b.score_cotes || 0) - (a.score_cotes || 0); });
 
