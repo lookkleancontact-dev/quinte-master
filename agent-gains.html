@@ -51,6 +51,14 @@ th,td{text-align:left;padding:6px 6px;border-bottom:1px solid var(--line)}
 .gain{border:1px solid var(--line);border-radius:8px;padding:10px}
 .gain .big{font:600 1.25rem/1.2 Georgia,serif}
 details{margin-top:8px}
+.jgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}
+.jgrid input,.jgrid select{width:100%;padding:10px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--ink);font:inherit}
+.jbtns{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+.jentry{border-bottom:1px solid var(--line);padding:8px 0;font-size:.92rem}
+.jentry .l1{display:flex;flex-wrap:wrap;gap:6px 14px;align-items:center}
+.pill{display:inline-block;padding:1px 8px;border-radius:99px;border:1px solid var(--line);font-size:.82rem}
+.pill.ok{border-color:var(--accent);color:var(--accent)}
+.small{font-size:.82rem}
 summary{cursor:pointer;font-weight:600}
 </style>
 </head>
@@ -79,6 +87,47 @@ summary{cursor:pointer;font-weight:600}
 </section>
 
 <div id="tickets"></div>
+
+<section class="card" id="journal">
+  <h2>Journal des tickets</h2>
+  <p class="muted">Enregistrez chaque ticket joué, puis renseignez l'arrivée et le gain reçu quand ils sont connus. Le bilan se calcule tout seul. Le journal est enregistré <b>en ligne dans votre base Supabase</b> (une copie reste dans ce navigateur). Saisissez une fois le mot de passe du journal pour activer la synchronisation.</p>
+  <div class="jgrid" style="margin-bottom:6px">
+    <div><label for="jpwd">Mot de passe du journal</label><input id="jpwd" type="password" autocomplete="off" placeholder="Défini dans Netlify (JOURNAL_PASSWORD)"></div>
+    <div style="align-self:end"><button class="alt" id="jlogin">Se connecter</button></div>
+  </div>
+  <p id="jsync" class="muted"></p>
+  <div class="jgrid">
+    <div><label for="jdate">Date</label><input id="jdate" type="date"></div>
+    <div><label for="jcourse">Course</label><input id="jcourse" type="text" placeholder="Vincennes R1 C4"></div>
+    <div><label for="jtype">Pari</label><select id="jtype"><option value="Q">Quinté</option><option value="T">Tiercé</option></select></div>
+    <div><label for="jplage">Plage</label><select id="jplage"><option value="prudente">Prudente</option><option value="equilibree">Équilibrée</option><option value="ambitieuse">Ambitieuse</option><option value="autre">Autre</option></select></div>
+    <div><label for="jmise">Mise (FCFA)</label><input id="jmise" type="number" min="0" step="100"></div>
+    <div><label for="jticket">Ticket joué</label><input id="jticket" type="text" placeholder="3-6-7-11-1"></div>
+    <div><label for="jarr">Arrivée officielle</label><input id="jarr" type="text" placeholder="4-11-7-6-13"></div>
+    <div><label for="jgain">Gain reçu (FCFA)</label><input id="jgain" type="number" min="0" step="100" placeholder="0 si rien"></div>
+    <div style="grid-column:1/-1"><label for="jnote">Note (facultatif)</label><input id="jnote" type="text" placeholder="Rapport betsporter, remarque…"></div>
+  </div>
+  <div class="jbtns">
+    <button id="jsave">Enregistrer</button>
+    <button class="alt" id="jreprQ">Reprendre le ticket Quinté affiché</button>
+    <button class="alt" id="jreprT">Reprendre le ticket Tiercé affiché</button>
+    <button class="alt" id="jcancel" hidden>Annuler la modification</button>
+  </div>
+  <p id="jmsg" class="muted"></p>
+  <h2 style="margin-top:14px">Bilan</h2>
+  <div id="jstats" class="muted">Aucun ticket enregistré.</div>
+  <h2 style="margin-top:14px">Historique</h2>
+  <div id="jlist"></div>
+  <div class="jbtns">
+    <button class="alt" id="jexport">Copier le journal (JSON)</button>
+    <button class="alt" id="jcsv">Télécharger en CSV</button>
+  </div>
+  <details>
+    <summary>Importer un journal exporté</summary>
+    <textarea id="jimporttxt" placeholder="Collez ici le JSON copié avec « Copier le journal »"></textarea>
+    <p style="margin-top:8px"><button class="alt" id="jimportbtn">Importer (fusionne avec le journal actuel)</button></p>
+  </details>
+</section>
 
 <section class="card">
   <details>
@@ -113,6 +162,7 @@ var PLAGES = {
 };
 var plageChoisie = "equilibree";
 var runners = [];
+var lastTickets = { Q:"", T:"", plage:"equilibree" };
 var meta = {};
 
 function buildPlages(){
@@ -269,6 +319,8 @@ function render(){
     box.appendChild(w);
   }
   var tQ = construire(a, 5, plage.Q, plage), tT = construire(a, 3, plage.T, plage);
+  var lst = function(t){ return t ? t.tous.slice().sort(function(x,y){ return x.cote - y.cote; }).map(function(r){ return r.numPmu; }).join("-") : ""; };
+  lastTickets = { Q: lst(tQ), T: lst(tT), plage: plageChoisie };
   box.appendChild(carteTicket("Ticket Quinté (5 chevaux)", 5, num("miseQ",500), 500, tQ, plage));
   box.appendChild(carteTicket("Ticket Tiercé (3 chevaux, même course)", 3, num("miseT",400), 400, tT, plage));
 }
@@ -290,7 +342,7 @@ function charger(){
       return lire(API_COTES + q);
     })
     .then(function(j){
-      meta = { hippodrome:j.hippodrome, numReunion:j.numReunion, numCourse:j.numCourse };
+      meta = { hippodrome:j.hippodrome, numReunion:j.numReunion, numCourse:j.numCourse, date:j.date };
       runners = (j.chevaux || []).filter(function(c){ return c.cote > 0 && c.statut !== "NON_PARTANT"; })
         .map(function(c){ return { numPmu:c.numPmu, nom:c.nom, cote:c.cote, exclu:false,
           surprise:c.score_surprise, profil:c.profil, forme:c.forme, musique:c.musique, driver:c.driver, signaux:c.signaux }; });
@@ -314,6 +366,258 @@ function manuel(){
   runners = out; meta = {}; st.className = "muted"; st.textContent = out.length + " chevaux saisis à la main.";
   render();
 }
+
+
+// ================= Journal =================
+var JKEY = "quinte_journal_v1", DKEY = "quinte_journal_del", PKEY = "quinte_journal_pwd", JAPI = "/.netlify/functions/journal", editId = null;
+var cache = [], synced = {}, enCours = false, relance = false;
+function lireLocal(){ try{ var a = JSON.parse(localStorage.getItem(JKEY) || "[]"); return Array.isArray(a) ? a : []; }catch(e){ return []; } }
+function lireSuppr(){ try{ var a = JSON.parse(localStorage.getItem(DKEY) || "[]"); return Array.isArray(a) ? a : []; }catch(e){ return []; } }
+function ecrireSuppr(a){ try{ localStorage.setItem(DKEY, JSON.stringify(a)); }catch(e){} }
+function statutJ(msg, cls){ var el = $("jsync"); if(el){ el.className = cls || "muted"; el.textContent = msg; } }
+function jload(){ return cache; }
+function jfetch(method, query, body){
+  var pwd = ""; try{ pwd = localStorage.getItem(PKEY) || ""; }catch(e){}
+  return fetch(JAPI + (query || ""), { method:method, headers:{ "content-type":"application/json", "x-journal-key":pwd }, body: body ? JSON.stringify(body) : undefined })
+    .then(function(r){ return r.text().then(function(t){
+      var j = {}; try{ j = JSON.parse(t); }catch(e){}
+      if(r.status === 401) throw new Error("401");
+      if(!r.ok) throw new Error(j.error || ("erreur " + r.status));
+      return j;
+    }); });
+}
+function erreurSync(err){
+  if(err.message === "401"){
+    try{ localStorage.removeItem(PKEY); }catch(e){}
+    statutJ("Mot de passe refusé. Saisissez-le à nouveau. Vos tickets restent dans ce navigateur.", "err");
+  } else {
+    statutJ("Synchronisation impossible (" + err.message + "). Vos tickets sont gardés ici et seront renvoyés au prochain essai.", "err");
+  }
+}
+function synchroniser(){
+  var pwd = ""; try{ pwd = localStorage.getItem(PKEY) || ""; }catch(e){}
+  if(!pwd){ statutJ("Mot de passe non saisi : les tickets restent dans ce navigateur seulement.", "muted"); return Promise.resolve(); }
+  if(enCours){ relance = true; return Promise.resolve(); }
+  var ids = {}; cache.forEach(function(e){ ids[e.id] = true; });
+  var dels = lireSuppr();
+  Object.keys(synced).forEach(function(id){ if(!ids[id]){ if(dels.indexOf(id) < 0) dels.push(id); delete synced[id]; } });
+  ecrireSuppr(dels);
+  var changes = cache.filter(function(e){ return synced[e.id] !== JSON.stringify(e); });
+  if(!changes.length && !dels.length){ statutJ("Journal synchronisé en ligne (" + cache.length + " ticket(s)).", "muted"); return Promise.resolve(); }
+  enCours = true; statutJ("Synchronisation…", "muted");
+  var p = Promise.resolve();
+  if(changes.length){
+    p = p.then(function(){ return jfetch("POST", "", { entries:changes }).then(function(){ changes.forEach(function(e){ synced[e.id] = JSON.stringify(e); }); }); });
+  }
+  dels.forEach(function(id){
+    p = p.then(function(){ return jfetch("DELETE", "?id=" + encodeURIComponent(id)).then(function(){ ecrireSuppr(lireSuppr().filter(function(x){ return x !== id; })); }); });
+  });
+  return p.then(function(){ statutJ("Journal synchronisé en ligne (" + cache.length + " ticket(s)).", "muted"); })
+    .catch(erreurSync)
+    .then(function(){ enCours = false; if(relance){ relance = false; return synchroniser(); } });
+}
+function jsave(list){
+  cache = list;
+  try{ localStorage.setItem(JKEY, JSON.stringify(list)); }catch(e){}
+  synchroniser();
+  return true;
+}
+function chargerJournal(){
+  cache = lireLocal(); jrender();
+  var pwd = ""; try{ pwd = localStorage.getItem(PKEY) || ""; }catch(e){}
+  if(!pwd){ statutJ("Mot de passe non saisi : les tickets restent dans ce navigateur seulement.", "muted"); return; }
+  statutJ("Chargement du journal en ligne…", "muted");
+  jfetch("GET", "").then(function(j){
+    var remote = j.entries || [], dels = lireSuppr(), byId = {};
+    synced = {};
+    remote.forEach(function(e){ synced[e.id] = JSON.stringify(e); if(dels.indexOf(e.id) < 0) byId[e.id] = e; });
+    cache.forEach(function(e){ if(!byId[e.id] && !synced[e.id] && dels.indexOf(e.id) < 0) byId[e.id] = e; });
+    cache = Object.keys(byId).map(function(k){ return byId[k]; });
+    try{ localStorage.setItem(JKEY, JSON.stringify(cache)); }catch(e){}
+    jrender();
+    return synchroniser();
+  }).catch(erreurSync);
+}
+function connecter(){
+  var v = $("jpwd").value.trim();
+  if(!v){ statutJ("Saisissez le mot de passe.", "err"); return; }
+  try{ localStorage.setItem(PKEY, v); }catch(e){}
+  $("jpwd").value = "";
+  chargerJournal();
+}
+function nums(t){ return (String(t || "").match(/\d+/g) || []).map(Number); }
+function toApi(iso){ var p = String(iso || "").split("-"); return p.length === 3 ? p[2] + p[1] + p[0] : ""; }
+function todayIso(){ return new Date(Date.now() - new Date().getTimezoneOffset()*60000).toISOString().slice(0,10); }
+function dateFr(iso){ var p = String(iso || "").split("-"); return p.length === 3 ? p[2] + "/" + p[1] + "/" + p[0] : iso; }
+function bilanTicket(e){
+  var k = e.type === "T" ? 3 : 5, arr = nums(e.arrivee).slice(0, k), t = nums(e.ticket);
+  if(arr.length < k || !t.length) return null;
+  var touches = t.filter(function(x, i){ return t.indexOf(x) === i && arr.indexOf(x) !== -1; }).length;
+  var desordre = t.length === k && touches === k;
+  var ordre = desordre && t.every(function(x, i){ return x === arr[i]; });
+  return { k:k, touches:touches, desordre:desordre, ordre:ordre };
+}
+function rangsMarche(e){
+  if(!e.snap || !e.snap.length) return "";
+  var k = e.type === "T" ? 3 : 5, arr = nums(e.arrivee).slice(0, k);
+  if(arr.length < k) return "";
+  var tri = e.snap.slice().sort(function(a, b){ return a.cote - b.cote; });
+  var out = arr.map(function(n){ var i = -1; tri.forEach(function(s, j){ if(s.num === n) i = j; }); return i < 0 ? "?" : (i + 1) + "e"; });
+  return "Rang au marché des chevaux de l'arrivée : " + out.join(", ") + ".";
+}
+function fcfaJ(n){ return Math.round(n).toLocaleString("fr-FR") + " FCFA"; }
+function plageNom(k){ return PLAGES[k] ? PLAGES[k].nom : "Autre"; }
+
+function formVide(){
+  editId = null;
+  $("jdate").value = todayIso(); $("jtype").value = "Q"; $("jplage").value = plageChoisie;
+  ["jmise","jticket","jarr","jgain","jnote"].forEach(function(id){ $(id).value = ""; });
+  $("jcourse").value = meta.hippodrome ? (meta.hippodrome + " R" + meta.numReunion + " C" + meta.numCourse) : "";
+  $("jcancel").hidden = true; $("jsave").textContent = "Enregistrer";
+  autoArrivee();
+}
+function autoArrivee(){
+  if($("jarr").value) return;
+  var d = $("jdate").value, f = jload().filter(function(e){ return e.date === d && e.arrivee; })[0];
+  if(f) $("jarr").value = f.arrivee;
+}
+function reprendre(type){
+  var t = type === "T" ? lastTickets.T : lastTickets.Q;
+  if(!t){ $("jmsg").className = "err"; $("jmsg").textContent = "Aucun ticket affiché : chargez d'abord la course."; return; }
+  editId = null; $("jcancel").hidden = true; $("jsave").textContent = "Enregistrer";
+  $("jtype").value = type; $("jplage").value = lastTickets.plage; $("jticket").value = t;
+  $("jmise").value = type === "T" ? num("miseT", 400) : num("miseQ", 500);
+  $("jcourse").value = meta.hippodrome ? (meta.hippodrome + " R" + meta.numReunion + " C" + meta.numCourse) : $("jcourse").value;
+  $("jmsg").className = "muted"; $("jmsg").textContent = "Ticket repris. Changez les numéros si vous avez joué autre chose, puis enregistrez.";
+}
+function enregistrer(){
+  var msg = $("jmsg"); msg.className = "muted";
+  var type = $("jtype").value, k = type === "T" ? 3 : 5, t = nums($("jticket").value), arr = nums($("jarr").value);
+  if(!$("jdate").value){ msg.className = "err"; msg.textContent = "Indiquez la date."; return; }
+  if(t.length !== k){ msg.className = "err"; msg.textContent = "Le ticket doit contenir " + k + " numéros (séparés par des tirets)."; return; }
+  if(arr.length && arr.length < k){ msg.className = "err"; msg.textContent = "L'arrivée doit contenir au moins " + k + " numéros, ou rester vide."; return; }
+  var list = jload();
+  var e = { id: editId || ("j" + Date.now()), date: $("jdate").value, course: $("jcourse").value.trim(), type: type,
+            plage: $("jplage").value, mise: parseFloat($("jmise").value) || 0, ticket: t.join("-"),
+            arrivee: arr.length ? arr.join("-") : "", gain: $("jgain").value === "" ? "" : (parseFloat($("jgain").value) || 0),
+            note: $("jnote").value.trim() };
+  var old = list.filter(function(x){ return x.id === e.id; })[0];
+  if(old && old.snap) e.snap = old.snap;
+  if(!e.snap && runners.length && meta.date && meta.date === toApi(e.date)){
+    e.snap = runners.map(function(r){ return { num:Number(r.numPmu), cote:r.cote, surprise:(r.surprise != null ? r.surprise : null) }; });
+  }
+  if(old){ list = list.map(function(x){ return x.id === e.id ? e : x; }); } else { list.push(e); }
+  var propages = 0;
+  if(e.arrivee){
+    list.forEach(function(x){ if(x.id !== e.id && x.date === e.date && !x.arrivee){ x.arrivee = e.arrivee; propages++; } });
+  }
+  if(jsave(list)){
+    msg.textContent = "Ticket enregistré." + (propages ? " L'arrivée a aussi été appliquée à " + propages + " autre(s) ticket(s) du même jour." : "");
+    formVide(); jrender();
+  }
+}
+function supprimer(id){
+  if(!window.confirm("Supprimer ce ticket du journal ?")) return;
+  jsave(jload().filter(function(x){ return x.id !== id; })); jrender();
+}
+function modifier(id){
+  var e = jload().filter(function(x){ return x.id === id; })[0]; if(!e) return;
+  editId = id;
+  $("jdate").value = e.date; $("jcourse").value = e.course; $("jtype").value = e.type; $("jplage").value = e.plage;
+  $("jmise").value = e.mise; $("jticket").value = e.ticket; $("jarr").value = e.arrivee; $("jgain").value = e.gain; $("jnote").value = e.note;
+  $("jcancel").hidden = false; $("jsave").textContent = "Mettre à jour";
+  $("jmsg").className = "muted"; $("jmsg").textContent = "Modification en cours : renseignez l'arrivée et le gain, puis mettez à jour.";
+  $("journal").scrollIntoView({ behavior:"smooth" });
+}
+function jrender(){
+  var list = jload().sort(function(a, b){ return a.date < b.date ? 1 : a.date > b.date ? -1 : (a.id < b.id ? 1 : -1); });
+  var box = $("jlist"); box.innerHTML = "";
+  list.forEach(function(e){
+    var b = bilanTicket(e);
+    var d = document.createElement("div"); d.className = "jentry";
+    var l1 = document.createElement("div"); l1.className = "l1";
+    var t1 = document.createElement("b"); t1.textContent = dateFr(e.date) + " · " + (e.type === "T" ? "Tiercé" : "Quinté") + " · " + plageNom(e.plage);
+    l1.appendChild(t1);
+    var t2 = document.createElement("span"); t2.textContent = "Ticket " + e.ticket + " · mise " + fcfaJ(e.mise); l1.appendChild(t2);
+    var p = document.createElement("span");
+    if(b){ p.className = "pill ok"; p.textContent = b.touches + "/" + b.k + " touchés" + (b.ordre ? " · ordre" : b.desordre ? " · désordre" : ""); }
+    else { p.className = "pill"; p.textContent = "arrivée à saisir"; }
+    l1.appendChild(p);
+    if(b){ var g = document.createElement("span"); g.textContent = "Gain " + fcfaJ(parseFloat(e.gain) || 0); l1.appendChild(g); }
+    d.appendChild(l1);
+    var l2 = document.createElement("div"); l2.className = "muted small";
+    l2.textContent = [e.course, e.arrivee ? "Arrivée " + e.arrivee : "", rangsMarche(e), e.note].filter(Boolean).join(" · ");
+    if(l2.textContent) d.appendChild(l2);
+    var l3 = document.createElement("div"); l3.className = "jbtns";
+    var bm = document.createElement("button"); bm.className = "alt"; bm.textContent = "Modifier / renseigner l'arrivée"; bm.addEventListener("click", function(){ modifier(e.id); });
+    var bs = document.createElement("button"); bs.className = "alt"; bs.textContent = "Supprimer"; bs.addEventListener("click", function(){ supprimer(e.id); });
+    l3.appendChild(bm); l3.appendChild(bs); d.appendChild(l3);
+    box.appendChild(d);
+  });
+  // bilan
+  var st = $("jstats");
+  if(!list.length){ st.textContent = "Aucun ticket enregistré."; return; }
+  var termines = list.filter(function(e){ return bilanTicket(e); }), attente = list.length - termines.length;
+  var mises = 0, gains = 0, parPlage = {};
+  termines.forEach(function(e){
+    var b = bilanTicket(e); mises += e.mise || 0; gains += parseFloat(e.gain) || 0;
+    var key = e.type + "|" + e.plage; var o = parPlage[key] || (parPlage[key] = { n:0, touches:0, k:b.k, mises:0, gains:0, type:e.type, plage:e.plage });
+    o.n++; o.touches += b.touches; o.mises += e.mise || 0; o.gains += parseFloat(e.gain) || 0;
+  });
+  st.innerHTML = "";
+  var l = document.createElement("p");
+  l.textContent = termines.length + " ticket(s) terminé(s), " + attente + " en attente. Misé : " + fcfaJ(mises) + ". Gagné : " + fcfaJ(gains) + ". Solde : " + (gains - mises >= 0 ? "+" : "−") + fcfaJ(Math.abs(gains - mises)) + ".";
+  st.appendChild(l);
+  if(termines.length){
+    var sc = document.createElement("div"); sc.className = "scroll";
+    var tb = document.createElement("table");
+    var hr = document.createElement("tr");
+    ["Pari / plage","Tickets","Chevaux touchés (moyenne)","Misé","Gagné"].forEach(function(x){ var th = document.createElement("th"); th.textContent = x; hr.appendChild(th); });
+    tb.appendChild(hr);
+    Object.keys(parPlage).forEach(function(key){
+      var o = parPlage[key], tr = document.createElement("tr");
+      [(o.type === "T" ? "Tiercé" : "Quinté") + " · " + plageNom(o.plage), o.n, (o.touches / o.n).toLocaleString("fr-FR", { maximumFractionDigits:1 }) + " sur " + o.k, fcfaJ(o.mises), fcfaJ(o.gains)].forEach(function(x){
+        var td = document.createElement("td"); td.textContent = x; tr.appendChild(td);
+      });
+      tb.appendChild(tr);
+    });
+    sc.appendChild(tb); st.appendChild(sc);
+  }
+}
+function exporterJson(){
+  var txt = JSON.stringify(jload(), null, 1), msg = $("jmsg");
+  if(navigator.clipboard){ navigator.clipboard.writeText(txt).then(function(){ msg.className = "muted"; msg.textContent = "Journal copié. Vous pouvez le coller dans une note comme sauvegarde supplémentaire."; }, function(){ window.prompt("Copiez le journal :", txt); }); }
+  else { window.prompt("Copiez le journal :", txt); }
+}
+function exporterCsv(){
+  var cols = ["date","course","type","plage","mise","ticket","arrivee","gain","note"];
+  var q = function(v){ return '"' + String(v == null ? "" : v).replace(/"/g, '""') + '"'; };
+  var lignes = [cols.join(";")].concat(jload().map(function(e){ return cols.map(function(c){ return q(e[c]); }).join(";"); }));
+  var blob = new Blob(["\ufeff" + lignes.join("\n")], { type:"text/csv;charset=utf-8" });
+  var a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = "journal-quinte.csv";
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+}
+function importer(){
+  var msg = $("jmsg");
+  try{
+    var inc = JSON.parse($("jimporttxt").value);
+    if(!Array.isArray(inc)) throw new Error("format");
+    var list = jload(), ids = {}; list.forEach(function(e){ ids[e.id] = true; });
+    var n = 0;
+    inc.forEach(function(e){ if(e && e.id && e.date && e.ticket && !ids[e.id]){ list.push(e); ids[e.id] = true; n++; } });
+    if(jsave(list)){ msg.className = "muted"; msg.textContent = n + " ticket(s) importé(s)."; $("jimporttxt").value = ""; jrender(); }
+  }catch(err){ msg.className = "err"; msg.textContent = "Import impossible : collez le JSON exporté tel quel."; }
+}
+$("jsave").addEventListener("click", enregistrer);
+$("jreprQ").addEventListener("click", function(){ reprendre("Q"); });
+$("jreprT").addEventListener("click", function(){ reprendre("T"); });
+$("jcancel").addEventListener("click", function(){ $("jmsg").textContent = ""; formVide(); });
+$("jdate").addEventListener("change", autoArrivee);
+$("jexport").addEventListener("click", exporterJson);
+$("jcsv").addEventListener("click", exporterCsv);
+$("jimportbtn").addEventListener("click", importer);
+$("jlogin").addEventListener("click", connecter);
+formVide(); chargerJournal();
 
 buildPlages();
 $("go").addEventListener("click", charger);
